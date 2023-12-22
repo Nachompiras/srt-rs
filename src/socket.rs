@@ -43,7 +43,7 @@ pub struct SrtSocket {
 impl SrtSocket {
     pub fn new() -> Result<Self> {
         let result = unsafe { srt::srt_create_socket() };
-        if result == -1 {
+        if result == srt::SRT_INVALID_SOCK {
             error::handle_result(Self { id: 0 }, result)
         } else {
             Ok(Self { id: result })
