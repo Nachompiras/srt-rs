@@ -1,11 +1,11 @@
 [package]
 name = "srt-rs"
-version = "0.2.4"
-authors = ["Hieu Nguyen <nthieu173@gmail.com>"]
+version = "0.3.0"
+authors = ["Hieu Nguyen <nthieu173@gmail.com>", "Ori Sky Farrell <git@ori.mx>"]
 edition = "2018"
 license = "MPL-2.0"
 description = "Idiomatic rust binding to libsrt"
-repository = "https://github.com/nthieu173/srt-rs"
+repository = "https://github.com/fundraise-arcade/srt-rs"
 readme = "README.md"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html

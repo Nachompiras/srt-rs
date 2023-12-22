@@ -29,10 +29,10 @@ type Result<T> = std::result::Result<T, SrtError>;
 
 pub fn startup() -> Result<()> {
     let result = unsafe { srt::srt_startup() };
-    if result == 1 {
-        Ok(())
-    } else {
-        error::handle_result((), result)
+    match result {
+        0 | 1 => Ok(()),
+        -1    => error::handle_result((), result),
+        _     => panic!()
     }
 }
 
