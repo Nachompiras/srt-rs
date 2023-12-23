@@ -754,11 +754,15 @@ pub struct SrtAsyncListener {
     callback: Option<Arc<Mutex<SrtListenerCallback>>>
 }
 
-extern "C" fn srt_listener_callback(opaque: *mut c_void, ns: srt::SRTSOCKET, hs_version: i32, peeraddr: *const srt::sockaddr, streamid: *const c_char) -> i32 {
+extern "C" fn srt_listener_callback(opaque: *mut c_void, ns: srt::SRTSOCKET, _hs_version: i32, _peeraddr: *const srt::sockaddr, _streamid: *const c_char) -> i32 {
     println!("test!");
 
     let socket = SrtSocket { id: ns };
-    let arc_callback = unsafe { Arc::from_raw(opaque as *mut Mutex<SrtListenerCallback>) };
+
+    let ptr = opaque as *mut Mutex<SrtListenerCallback>;
+    unsafe { Arc::increment_strong_count(ptr) };
+
+    let arc_callback = unsafe { Arc::from_raw(ptr) };
     let callback = arc_callback.lock().unwrap();
     match callback(socket) {
         true => 0,
@@ -771,7 +775,6 @@ impl SrtAsyncListener {
         let safe_callback = match callback {
             Some(cb) => {
                 let arc_callback = Arc::new(Mutex::new(cb));
-                let _ = *arc_callback.lock().unwrap();
                 let opaque_callback = Arc::into_raw(arc_callback.clone()) as *mut c_void;
                 let result = unsafe { srt::srt_listen_callback(socket.id, Some(srt_listener_callback), opaque_callback) };
                 error::handle_result((), result)?;
