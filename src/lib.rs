@@ -49,7 +49,7 @@ pub fn builder() -> SrtBuilder {
 
 pub fn async_builder() -> SrtAsyncBuilder {
     let opt_vec = [SrtPreConnectOpt::RcvSyn(false)].to_vec();
-    SrtAsyncBuilder { opt_vec }
+    SrtAsyncBuilder { opt_vec, callback: None }
 }
 
 pub struct SrtListener {
@@ -746,16 +746,8 @@ impl Drop for SrtAsyncStream {
     }
 }
 
-extern "C" fn srt_async_listener_callback(opaque: *mut c_void, ns: srt::SRTSOCKET, hs_version: i32, peeraddr: *const srt::sockaddr, streamid: *const c_char) -> i32 {
-    println!("test!");
-    0
-}
-
-pub type SrtAsyncListenerCallback = fn(SocketAddr, &str) -> bool;
-
 pub struct SrtAsyncListener {
     socket: SrtSocket,
-    callback: Option<SrtAsyncListenerCallback>
 }
 
 impl SrtAsyncListener {
@@ -769,12 +761,6 @@ impl SrtAsyncListener {
     }
     pub fn local_addr(&self) -> Result<SocketAddr> {
         self.socket.local_addr()
-    }
-
-    pub fn set_callback(&mut self, callback: SrtAsyncListenerCallback) -> Result<()> {
-        self.callback = Some(callback);
-        let result = unsafe { srt::srt_listen_callback(self.socket.id, Some(srt_async_listener_callback), std::ptr::null_mut()) };
-        error::handle_result((), result)
     }
 }
 
@@ -879,8 +865,16 @@ impl SrtBoundAsyncSocket {
     }
 }
 
+extern "C" fn srt_listener_callback(opaque: *mut c_void, ns: srt::SRTSOCKET, hs_version: i32, peeraddr: *const srt::sockaddr, streamid: *const c_char) -> i32 {
+    println!("test!");
+    0
+}
+
+pub type SrtListenerCallback = fn(SocketAddr, &str) -> bool;
+
 pub struct SrtAsyncBuilder {
     opt_vec: Vec<SrtPreConnectOpt>,
+    callback: Option<SrtListenerCallback>
 }
 
 impl SrtAsyncBuilder {
@@ -901,10 +895,16 @@ impl SrtAsyncBuilder {
     }
     pub fn listen<A: ToSocketAddrs>(self, addr: A, backlog: i32) -> Result<SrtAsyncListener> {
         let socket = SrtSocket::new()?;
+
+        if let Some(callback) = self.callback {
+            let result = unsafe { srt::srt_listen_callback(socket.id, Some(srt_listener_callback), std::ptr::null_mut()) };
+            error::handle_result((), result)?;
+        }
+
         self.config_socket(&socket)?;
         let socket = socket.bind(addr)?;
         socket.listen(backlog)?; // Still synchronous
-        Ok(SrtAsyncListener { socket, callback: None })
+        Ok(SrtAsyncListener { socket })
     }
     pub fn rendezvous<A: ToSocketAddrs>(self, local: A, remote: A) -> Result<ConnectFuture> {
         let socket = SrtSocket::new()?;
@@ -918,6 +918,11 @@ impl SrtAsyncBuilder {
 }
 
 impl SrtAsyncBuilder {
+    pub fn set_callback(mut self, callback: SrtListenerCallback) -> Self {
+        self.callback = Some(callback);
+        self
+    }
+
     #[cfg(target_os = "linux")]
     pub fn set_bind_to_device(mut self, device: &str) -> Self {
         self.opt_vec
