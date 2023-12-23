@@ -746,11 +746,22 @@ impl Drop for SrtAsyncStream {
     }
 }
 
-pub type SrtListenerCallback = fn(SocketAddr, &str) -> bool;
+pub type SrtListenerCallback = fn(SrtSocket) -> bool;
 
 pub struct SrtAsyncListener {
     socket: SrtSocket,
     callback: Option<SrtListenerCallback>
+}
+
+extern "C" fn srt_listener_callback(opaque: *mut c_void, ns: srt::SRTSOCKET, hs_version: i32, peeraddr: *const srt::sockaddr, streamid: *const c_char) -> i32 {
+    println!("test!");
+
+    let socket = SrtSocket { id: ns };
+    let callback = unsafe { &mut *(opaque as *mut SrtListenerCallback) };
+    match callback(socket) {
+        true => 0,
+        false => -1
+    }
 }
 
 impl SrtAsyncListener {
@@ -876,15 +887,6 @@ impl SrtBoundAsyncSocket {
     pub fn local_addr(&self) -> Result<SocketAddr> {
         self.socket.local_addr()
     }
-}
-
-extern "C" fn srt_listener_callback(opaque: *mut c_void, ns: srt::SRTSOCKET, hs_version: i32, peeraddr: *const srt::sockaddr, streamid: *const c_char) -> i32 {
-    println!("test!");
-
-    let socket = SrtSocket { id: ns };
-    if let Err(_) = socket.set_reject_reason(error::SrtRejectReason::Predefined(401)) {}
-
-    -1
 }
 
 pub struct SrtAsyncBuilder {
