@@ -519,6 +519,9 @@ impl SrtAsyncStream {
     pub fn set_recovery_bandwidth_overhead(&self, per_cent: i32) -> Result<()> {
         self.socket.set_recovery_bandwidth_overhead(per_cent)
     }
+    pub fn set_reject_reason(&self, reason: error::SrtRejectReason) -> Result<()> {
+        self.socket.set_reject_reason(reason)
+    }
     pub fn get_flight_flag_size(&self) -> Result<i32> {
         self.socket.get_flight_flag_size()
     }
