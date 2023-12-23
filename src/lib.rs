@@ -16,7 +16,7 @@ use std::{
     iter::Iterator,
     net::{SocketAddr, ToSocketAddrs},
     ops::Drop,
-    os::raw::c_int,
+    os::raw::{c_char, c_int, c_void},
     pin::Pin,
     thread,
 };
@@ -746,8 +746,16 @@ impl Drop for SrtAsyncStream {
     }
 }
 
+extern "C" fn srt_async_listener_callback(opaque: *mut c_void, ns: srt::SRTSOCKET, hs_version: i32, peeraddr: *const srt::sockaddr, streamid: *const c_char) -> i32 {
+    println!("test!");
+    0
+}
+
+pub type SrtAsyncListenerCallback = fn(SocketAddr, &str) -> bool;
+
 pub struct SrtAsyncListener {
     socket: SrtSocket,
+    callback: Option<SrtAsyncListenerCallback>
 }
 
 impl SrtAsyncListener {
@@ -761,6 +769,12 @@ impl SrtAsyncListener {
     }
     pub fn local_addr(&self) -> Result<SocketAddr> {
         self.socket.local_addr()
+    }
+
+    pub fn set_callback(&mut self, callback: SrtAsyncListenerCallback) -> Result<()> {
+        self.callback = Some(callback);
+        let result = unsafe { srt::srt_listen_callback(self.socket.id, Some(srt_async_listener_callback), std::ptr::null_mut()) };
+        error::handle_result((), result)
     }
 }
 
@@ -890,7 +904,7 @@ impl SrtAsyncBuilder {
         self.config_socket(&socket)?;
         let socket = socket.bind(addr)?;
         socket.listen(backlog)?; // Still synchronous
-        Ok(SrtAsyncListener { socket })
+        Ok(SrtAsyncListener { socket, callback: None })
     }
     pub fn rendezvous<A: ToSocketAddrs>(self, local: A, remote: A) -> Result<ConnectFuture> {
         let socket = SrtSocket::new()?;
