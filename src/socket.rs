@@ -638,7 +638,7 @@ impl SrtSocket {
         let result = unsafe {
             srt::srt_getsockflag(
                 self.id,
-                srt::SRT_SOCKOPT::SRTO_STATE,
+                srt::SRT_SOCKOPT::SRTO_STREAMID,
                 id.as_mut_ptr() as *mut c_void,
                 &mut id_len as *mut c_int,
             )
