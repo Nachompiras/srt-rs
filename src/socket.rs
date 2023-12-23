@@ -1070,7 +1070,7 @@ impl SrtSocket {
         error::handle_result((), result)
     }
     pub fn set_reject_reason(&self, reason: error::SrtRejectReason) -> Result<()> {
-        let result = unsafe { srt::srt_setrejectreason(self.id, reason as c_int) };
+        let result = unsafe { srt::srt_setrejectreason(self.id, reason.raw() as c_int) };
         error::handle_result((), result)
     }
     pub fn set_rendezvous(&self, rendezvous: bool) -> Result<()> {

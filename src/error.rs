@@ -225,23 +225,51 @@ fn error_msg(err: &SrtError) -> String {
 
 #[derive(Clone, Copy, Debug)]
 pub enum SrtRejectReason {
-    Unknown,    // initial set when in progress
-    System,     // broken due to system function error
-    Peer,       // connection was rejected by peer
-    Resource,   // internal problem with resource allocation
-    Rogue,      // incorrect data in handshake messages
-    Backlog,    // listener's backlog exceeded
-    IPE,        // internal program error
-    Close,      // socket is closing
-    Version,    // peer is older version than agent's minimum set
-    RdvCookie,  // rendezvous cookie collision
-    BadSecret,  // wrong password
-    Unsecure,   // password required or unexpected
-    MessageAPI, // streamapi/messageapi collision
-    Congestion, // incompatible congestion-controller type
-    Filter,     // incompatible packet filter
-    Group,      // incompatible group
-    Timeout,    // connection timeout
+    Unknown,         // initial set when in progress
+    System,          // broken due to system function error
+    Peer,            // connection was rejected by peer
+    Resource,        // internal problem with resource allocation
+    Rogue,           // incorrect data in handshake messages
+    Backlog,         // listener's backlog exceeded
+    IPE,             // internal program error
+    Close,           // socket is closing
+    Version,         // peer is older version than agent's minimum set
+    RdvCookie,       // rendezvous cookie collision
+    BadSecret,       // wrong password
+    Unsecure,        // password required or unexpected
+    MessageAPI,      // streamapi/messageapi collision
+    Congestion,      // incompatible congestion-controller type
+    Filter,          // incompatible packet filter
+    Group,           // incompatible group
+    Timeout,         // connection timeout
+    Predefined(u32), // adopted HTTP codes
+    UserDefined(u32) // freely defined by application
+}
+
+impl SrtRejectReason {
+    pub fn raw(&self) -> u32 {
+        match self {
+            SrtRejectReason::Unknown => srt::SRT_REJECT_REASON::SRT_REJ_UNKNOWN.0,
+            SrtRejectReason::System => srt::SRT_REJECT_REASON::SRT_REJ_SYSTEM.0,
+            SrtRejectReason::Peer => srt::SRT_REJECT_REASON::SRT_REJ_PEER.0,
+            SrtRejectReason::Resource => srt::SRT_REJECT_REASON::SRT_REJ_RESOURCE.0,
+            SrtRejectReason::Rogue => srt::SRT_REJECT_REASON::SRT_REJ_ROGUE.0,
+            SrtRejectReason::Backlog => srt::SRT_REJECT_REASON::SRT_REJ_BACKLOG.0,
+            SrtRejectReason::IPE => srt::SRT_REJECT_REASON::SRT_REJ_IPE.0,
+            SrtRejectReason::Close => srt::SRT_REJECT_REASON::SRT_REJ_CLOSE.0,
+            SrtRejectReason::Version => srt::SRT_REJECT_REASON::SRT_REJ_VERSION.0,
+            SrtRejectReason::RdvCookie => srt::SRT_REJECT_REASON::SRT_REJ_RDVCOOKIE.0,
+            SrtRejectReason::BadSecret => srt::SRT_REJECT_REASON::SRT_REJ_BADSECRET.0,
+            SrtRejectReason::Unsecure => srt::SRT_REJECT_REASON::SRT_REJ_UNSECURE.0,
+            SrtRejectReason::MessageAPI => srt::SRT_REJECT_REASON::SRT_REJ_MESSAGEAPI.0,
+            SrtRejectReason::Congestion => srt::SRT_REJECT_REASON::SRT_REJ_CONGESTION.0,
+            SrtRejectReason::Filter => srt::SRT_REJECT_REASON::SRT_REJ_FILTER.0,
+            SrtRejectReason::Group => srt::SRT_REJECT_REASON::SRT_REJ_GROUP.0,
+            SrtRejectReason::Timeout => srt::SRT_REJECT_REASON::SRT_REJ_TIMEOUT.0,
+            SrtRejectReason::Predefined(x) => srt::SRT_REJC_PREDEFINED + x,
+            SrtRejectReason::UserDefined(x) => srt::SRT_REJC_USERDEFINED + 1 + x
+        }
+    }
 }
 
 impl From<srt::SRT_REJECT_REASON> for SrtRejectReason {
@@ -264,7 +292,10 @@ impl From<srt::SRT_REJECT_REASON> for SrtRejectReason {
             srt::SRT_REJECT_REASON::SRT_REJ_FILTER => SrtRejectReason::Filter,
             srt::SRT_REJECT_REASON::SRT_REJ_GROUP => SrtRejectReason::Group,
             srt::SRT_REJECT_REASON::SRT_REJ_TIMEOUT => SrtRejectReason::Timeout,
-            _ => unreachable!("unrecognized SRT_REJECT_REASON"),
+            _ => match reject_reason.0 {
+                srt::SRT_REJC_PREDEFINED..=srt::SRT_REJC_USERDEFINED => SrtRejectReason::Predefined(reject_reason.0 - srt::SRT_REJC_PREDEFINED),
+                _ => SrtRejectReason::UserDefined(reject_reason.0 - srt::SRT_REJC_USERDEFINED + 1),
+            }
         }
     }
 }
