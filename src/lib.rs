@@ -746,11 +746,24 @@ impl Drop for SrtAsyncStream {
     }
 }
 
+pub type SrtListenerCallback = fn(SocketAddr, &str) -> bool;
+
 pub struct SrtAsyncListener {
     socket: SrtSocket,
+    callback: Option<SrtListenerCallback>
 }
 
 impl SrtAsyncListener {
+    pub fn new(socket: SrtSocket, callback: Option<SrtListenerCallback>, backlog: i32) -> Result<Self> {
+        if let Some(mut cb) = callback {
+            let opaque_callback = &mut cb as *mut _ as *mut c_void;
+            let result = unsafe { srt::srt_listen_callback(socket.id, Some(srt_listener_callback), opaque_callback) };
+            error::handle_result((), result)?;
+        }
+
+        socket.listen(backlog)?; // Still synchronous
+        Ok(SrtAsyncListener { socket, callback })
+    }
     pub fn accept(&self) -> AcceptFuture {
         AcceptFuture {
             socket: self.socket,
@@ -874,8 +887,6 @@ extern "C" fn srt_listener_callback(opaque: *mut c_void, ns: srt::SRTSOCKET, hs_
     -1
 }
 
-pub type SrtListenerCallback = fn(SocketAddr, &str) -> bool;
-
 pub struct SrtAsyncBuilder {
     opt_vec: Vec<SrtPreConnectOpt>,
     callback: Option<SrtListenerCallback>
@@ -897,18 +908,13 @@ impl SrtAsyncBuilder {
         socket.set_receive_blocking(false)?;
         Ok(ConnectFuture { socket })
     }
-    pub fn listen<A: ToSocketAddrs>(self, addr: A, backlog: i32) -> Result<SrtAsyncListener> {
+    pub fn listen<A: ToSocketAddrs>(self, addr: A, backlog: i32, callback: Option<SrtListenerCallback>) -> Result<SrtAsyncListener> {
         let socket = SrtSocket::new()?;
-
-        if let Some(callback) = self.callback {
-            let result = unsafe { srt::srt_listen_callback(socket.id, Some(srt_listener_callback), std::ptr::null_mut()) };
-            error::handle_result((), result)?;
-        }
 
         self.config_socket(&socket)?;
         let socket = socket.bind(addr)?;
-        socket.listen(backlog)?; // Still synchronous
-        Ok(SrtAsyncListener { socket })
+
+        SrtAsyncListener::new(socket, callback, backlog)
     }
     pub fn rendezvous<A: ToSocketAddrs>(self, local: A, remote: A) -> Result<ConnectFuture> {
         let socket = SrtSocket::new()?;
