@@ -867,7 +867,11 @@ impl SrtBoundAsyncSocket {
 
 extern "C" fn srt_listener_callback(opaque: *mut c_void, ns: srt::SRTSOCKET, hs_version: i32, peeraddr: *const srt::sockaddr, streamid: *const c_char) -> i32 {
     println!("test!");
-    0
+
+    let socket = SrtSocket { id: ns };
+    if let Err(_) = socket.set_reject_reason(error::SrtRejectReason::Predefined(401)) {}
+
+    -1
 }
 
 pub type SrtListenerCallback = fn(SocketAddr, &str) -> bool;
