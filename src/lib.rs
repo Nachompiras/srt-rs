@@ -18,6 +18,7 @@ use std::{
     ops::Drop,
     os::raw::{c_char, c_int, c_void},
     pin::Pin,
+    sync::{Arc, Mutex},
     thread,
 };
 
@@ -750,14 +751,15 @@ pub type SrtListenerCallback = fn(SrtSocket) -> bool;
 
 pub struct SrtAsyncListener {
     socket: SrtSocket,
-    callback: Option<SrtListenerCallback>
+    callback: Option<Arc<Mutex<SrtListenerCallback>>>
 }
 
 extern "C" fn srt_listener_callback(opaque: *mut c_void, ns: srt::SRTSOCKET, hs_version: i32, peeraddr: *const srt::sockaddr, streamid: *const c_char) -> i32 {
     println!("test!");
 
     let socket = SrtSocket { id: ns };
-    let callback = unsafe { &mut *(opaque as *mut SrtListenerCallback) };
+    let arc_callback = unsafe { Arc::from_raw(opaque as *mut Mutex<SrtListenerCallback>) };
+    let callback = arc_callback.lock().unwrap();
     match callback(socket) {
         true => 0,
         false => -1
@@ -766,14 +768,20 @@ extern "C" fn srt_listener_callback(opaque: *mut c_void, ns: srt::SRTSOCKET, hs_
 
 impl SrtAsyncListener {
     pub fn new(socket: SrtSocket, callback: Option<SrtListenerCallback>, backlog: i32) -> Result<Self> {
-        if let Some(mut cb) = callback {
-            let opaque_callback = &mut cb as *mut _ as *mut c_void;
-            let result = unsafe { srt::srt_listen_callback(socket.id, Some(srt_listener_callback), opaque_callback) };
-            error::handle_result((), result)?;
-        }
+        let safe_callback = match callback {
+            Some(cb) => {
+                let arc_callback = Arc::new(Mutex::new(cb));
+                let _ = *arc_callback.lock().unwrap();
+                let opaque_callback = Arc::into_raw(arc_callback.clone()) as *mut c_void;
+                let result = unsafe { srt::srt_listen_callback(socket.id, Some(srt_listener_callback), opaque_callback) };
+                error::handle_result((), result)?;
+                Some(arc_callback)
+            },
+            None => None
+        };
 
         socket.listen(backlog)?; // Still synchronous
-        Ok(SrtAsyncListener { socket, callback })
+        Ok(SrtAsyncListener { socket, callback: safe_callback })
     }
     pub fn accept(&self) -> AcceptFuture {
         AcceptFuture {
