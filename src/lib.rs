@@ -12,6 +12,7 @@ use futures::{
 
 use std::{
     convert::TryInto,
+    ffi::CStr,
     io::{self, Read, Write},
     iter::Iterator,
     net::{SocketAddr, ToSocketAddrs},
@@ -747,26 +748,31 @@ impl Drop for SrtAsyncStream {
     }
 }
 
-pub type SrtListenerCallback = fn(SrtSocket) -> bool;
+pub type SrtListenerCallback = fn(&str) -> bool;
 
 pub struct SrtAsyncListener {
     socket: SrtSocket,
-    callback: Option<Arc<Mutex<SrtListenerCallback>>>
+    _callback: Option<Arc<Mutex<SrtListenerCallback>>>
 }
 
-extern "C" fn srt_listener_callback(opaque: *mut c_void, ns: srt::SRTSOCKET, _hs_version: i32, _peeraddr: *const srt::sockaddr, _streamid: *const c_char) -> i32 {
+extern "C" fn srt_listener_callback(opaque: *mut c_void, ns: srt::SRTSOCKET, _hs_version: i32, _peeraddr: *const srt::sockaddr, c_stream_id: *const c_char) -> i32 {
     println!("test!");
 
-    let socket = SrtSocket { id: ns };
+    let _socket = SrtSocket { id: ns };
 
-    let ptr = opaque as *mut Mutex<SrtListenerCallback>;
-    unsafe { Arc::increment_strong_count(ptr) };
+    match unsafe { CStr::from_ptr(c_stream_id).to_str() } {
+        Ok(stream_id) => {
+            let ptr = opaque as *mut Mutex<SrtListenerCallback>;
+            unsafe { Arc::increment_strong_count(ptr) };
 
-    let arc_callback = unsafe { Arc::from_raw(ptr) };
-    let callback = arc_callback.lock().unwrap();
-    match callback(socket) {
-        true => 0,
-        false => -1
+            let arc_callback = unsafe { Arc::from_raw(ptr) };
+            let callback = arc_callback.lock().unwrap();
+            match callback(stream_id) {
+                true => 0,
+                false => -1
+            }
+        },
+        _ => -1
     }
 }
 
@@ -784,7 +790,7 @@ impl SrtAsyncListener {
         };
 
         socket.listen(backlog)?; // Still synchronous
-        Ok(SrtAsyncListener { socket, callback: safe_callback })
+        Ok(SrtAsyncListener { socket, _callback: safe_callback })
     }
     pub fn accept(&self) -> AcceptFuture {
         AcceptFuture {
