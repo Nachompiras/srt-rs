@@ -748,7 +748,7 @@ impl Drop for SrtAsyncStream {
     }
 }
 
-pub type SrtListenerCallback = fn(&str) -> bool;
+pub type SrtListenerCallback = fn(SrtSocket, &str) -> std::result::Result<(), error::SrtRejectReason>;
 
 pub struct SrtAsyncListener {
     socket: SrtSocket,
@@ -758,7 +758,7 @@ pub struct SrtAsyncListener {
 extern "C" fn srt_listener_callback(opaque: *mut c_void, ns: srt::SRTSOCKET, _hs_version: i32, _peeraddr: *const srt::sockaddr, c_stream_id: *const c_char) -> i32 {
     println!("test!");
 
-    let _socket = SrtSocket { id: ns };
+    let socket = SrtSocket { id: ns };
 
     match unsafe { CStr::from_ptr(c_stream_id).to_str() } {
         Ok(stream_id) => {
@@ -767,12 +767,18 @@ extern "C" fn srt_listener_callback(opaque: *mut c_void, ns: srt::SRTSOCKET, _hs
 
             let arc_callback = unsafe { Arc::from_raw(ptr) };
             let callback = arc_callback.lock().unwrap();
-            match callback(stream_id) {
-                true => 0,
-                false => -1
+            match callback(socket, stream_id) {
+                Ok(_) => 0,
+                Err(reason) => {
+                    if let Err(_) = socket.set_reject_reason(reason) {}
+                    -1
+                }
             }
         },
-        _ => -1
+        Err(_) => {
+            if let Err(_) = socket.set_reject_reason(error::SrtRejectReason::Predefined(400)) {}
+            -1
+        }
     }
 }
 
