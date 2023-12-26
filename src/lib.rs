@@ -756,8 +756,6 @@ pub struct SrtAsyncListener {
 }
 
 extern "C" fn srt_listener_callback(opaque: *mut c_void, ns: srt::SRTSOCKET, _hs_version: i32, _peeraddr: *const srt::sockaddr, c_stream_id: *const c_char) -> i32 {
-    println!("test!");
-
     let socket = SrtSocket { id: ns };
 
     match unsafe { CStr::from_ptr(c_stream_id).to_str() } {
