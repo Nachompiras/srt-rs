@@ -6,9 +6,10 @@ use libsrt_sys as srt;
 
 use futures::{
     future::Future,
-    io::{AsyncRead, AsyncWrite},
     task::{Context, Poll},
 };
+
+use tokio::io::{AsyncRead, AsyncWrite, ReadBuf};
 
 use std::{
     convert::TryInto,
@@ -638,10 +639,13 @@ impl AsyncRead for SrtAsyncStream {
     fn poll_read(
         self: Pin<&mut Self>,
         cx: &mut Context<'_>,
-        buf: &mut [u8],
-    ) -> Poll<std::result::Result<usize, io::Error>> {
-        match self.socket.recv(buf) {
-            Ok(s) => Poll::Ready(Ok(s)),
+        buf: &mut ReadBuf<'_>,
+    ) -> Poll<std::result::Result<(), io::Error>> {
+        match self.socket.recv(buf.initialized_mut()) {
+            Ok(s) => {
+                buf.set_filled(s);
+                Poll::Ready(Ok(()))
+            },
             Err(e) => match e {
                 SrtError::AsyncRcv => {
                     let waker = cx.waker().clone();
@@ -714,7 +718,7 @@ impl AsyncWrite for SrtAsyncStream {
             Err(e) => Poll::Ready(Err(e.into())),
         }
     }
-    fn poll_close(
+    fn poll_shutdown(
         self: Pin<&mut Self>,
         cx: &mut Context<'_>,
     ) -> Poll<std::result::Result<(), io::Error>> {
