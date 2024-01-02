@@ -646,7 +646,7 @@ impl AsyncRead for SrtAsyncStream {
         }
         match self.socket.recv(buf.initialize_unfilled()) {
             Ok(s) => {
-                buf.set_filled(s);
+                buf.advance(s);
                 Poll::Ready(Ok(()))
             },
             Err(e) => match e {
