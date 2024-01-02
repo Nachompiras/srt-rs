@@ -641,8 +641,8 @@ impl AsyncRead for SrtAsyncStream {
         cx: &mut Context<'_>,
         buf: &mut ReadBuf<'_>,
     ) -> Poll<std::result::Result<(), io::Error>> {
-        if buf.capacity() == 0 {
-            return Poll::Ready(Err(io::Error::new(io::ErrorKind::InvalidInput, "Buffer has no capacity")));
+        if buf.capacity() < 1316 {
+            return Poll::Ready(Err(io::Error::new(io::ErrorKind::InvalidInput, "Buffer must have capacity for 1316 bytes")));
         }
         match self.socket.recv(buf.initialize_unfilled()) {
             Ok(s) => {
