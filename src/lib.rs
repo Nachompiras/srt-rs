@@ -641,7 +641,7 @@ impl AsyncRead for SrtAsyncStream {
         cx: &mut Context<'_>,
         buf: &mut ReadBuf<'_>,
     ) -> Poll<std::result::Result<(), io::Error>> {
-        match self.socket.recv(buf.initialized_mut()) {
+        match self.socket.recv(buf.initialize_unfilled()) {
             Ok(s) => {
                 buf.set_filled(s);
                 Poll::Ready(Ok(()))
