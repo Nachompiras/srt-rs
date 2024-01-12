@@ -14,7 +14,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         println!("cargo:rustc-link-lib=srt");
     } else if cfg!(windows) {
         let dst = cmake::Config::new("libsrt")
-            .generator("Visual Studio 16 2019")
+            .generator("Visual Studio 17 2022")
             .cxxflag("/EHs")
             .define("ENABLE_STDCXX_SYNC", "ON")
             .define("ENABLE_APPS", "OFF")
