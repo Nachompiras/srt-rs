@@ -32,6 +32,7 @@ type Result<T> = std::result::Result<T, SrtError>;
 
 pub fn startup() -> Result<()> {
     let result = unsafe { srt::srt_startup() };
+    unsafe { srt::srt_setloglevel(7) };
     match result {
         0 | 1 => Ok(()),
         -1    => error::handle_result((), result),
