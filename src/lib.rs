@@ -755,7 +755,7 @@ impl Drop for SrtAsyncStream {
     }
 }
 
-pub type SrtListenerCallback = fn(SrtSocket, &str) -> std::result::Result<(), error::SrtRejectReason>;
+pub type SrtListenerCallback = Box<dyn Fn(SrtSocket, &str) -> std::result::Result<(), error::SrtRejectReason> + Send + 'static>;
 
 pub struct SrtAsyncListener {
     socket: SrtSocket,
