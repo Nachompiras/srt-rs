@@ -1,6 +1,6 @@
 [package]
 name = "srt-rs"
-version = "0.3.0"
+version = "0.4.0"
 authors = ["Hieu Nguyen <nthieu173@gmail.com>", "Ori Sky Farrell <git@ori.mx>"]
 edition = "2018"
 license = "MPL-2.0"
