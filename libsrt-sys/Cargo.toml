@@ -2,12 +2,12 @@
 name = "libsrt-sys"
 version = "1.5.4"
 authors = ["Hieu Nguyen <nthieu173@gmail.com>"]
-edition = "2018"
+edition = "2025"
 license = "MPL-2.0"
 description = "Bindings for libsrt"
 links = "srt"
 build = "build.rs"
-repository = "https://github.com/nthieu173/srt-rs"
+repository = "https://github.com/Nachompiras/srt-rs"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
