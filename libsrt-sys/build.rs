@@ -17,6 +17,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             .cxxflag("/EHs")
             .define("ENABLE_STDCXX_SYNC", "ON")
             .define("ENABLE_APPS", "OFF")
+            .define("ENABLE_BONDING", "ON")
             .build();
         let mut lib_dir = PathBuf::from(dst.clone());
         lib_dir.push("lib");
