@@ -39,6 +39,32 @@ pub fn startup() -> Result<()> {
     }
 }
 
+pub mod log {
+    pub enum Level {
+        Crit,
+        Err,
+        Warning,
+        Notice,
+        Info,
+        Debug,
+    }
+    impl Level {
+        fn as_cint(&self) -> std::os::raw::c_int {
+            match self {
+                Level::Crit => 2,
+                Level::Err => 3,
+                Level::Warning => 4,
+                Level::Notice => 5,
+                Level::Info => 6,
+                Level::Debug => 7,
+            }
+        }
+    }
+    pub fn set_level(level: Level) {
+        unsafe { super::srt::srt_setloglevel(level.as_cint()) };
+    }
+}
+
 pub fn cleanup() -> Result<()> {
     let result = unsafe { srt::srt_cleanup() };
     error::handle_result((), result)
