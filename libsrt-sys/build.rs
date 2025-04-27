@@ -5,7 +5,7 @@ use std::{env, path::PathBuf};
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     if cfg!(unix) {
-        let dst = cmake::Config::new("libsrt")
+        let dst = cmake::Config::new("libsrt1")
             .define("ENABLE_APPS", "OFF")
             .build();
         let mut lib_dir = PathBuf::from(dst);
@@ -13,7 +13,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         println!("cargo:rustc-link-search={}", lib_dir.display());
         println!("cargo:rustc-link-lib=srt");
     } else if cfg!(windows) {
-        let dst = cmake::Config::new("libsrt")            
+        let dst = cmake::Config::new("libsrt1")            
             .cxxflag("/EHs")
             .define("ENABLE_STDCXX_SYNC", "ON")
             .define("ENABLE_APPS", "OFF")
