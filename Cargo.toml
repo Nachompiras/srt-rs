@@ -2,20 +2,20 @@
 name = "srt-rs"
 version = "0.4.0"
 authors = ["Hieu Nguyen <nthieu173@gmail.com>", "Ori Sky Farrell <git@ori.mx>"]
-edition = "2018"
+edition = "2025"
 license = "MPL-2.0"
 description = "Idiomatic rust binding to libsrt"
-repository = "https://github.com/fundraise-arcade/srt-rs"
+repository = "https://github.com/Nachompiras/srt-rs"
 readme = "README.md"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 [dependencies]
-libsrt-sys = { path = "libsrt-sys", version = "1.4.13" }
+libsrt-sys = { path = "libsrt-sys", version = "1.5.4" }
 libc = "0.2"
 futures = "0.3"
 
 os_socketaddr = { version = "0.2.5" }
-tokio = { version = "1.35.1", features = ["io-util"] }
+tokio = { version = "1.35.1", features = ["full","rt"] }
 
 [target.'cfg(windows)'.dependencies]
 winapi = {version = "0.3", features = ["winsock2"] }
