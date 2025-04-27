@@ -680,7 +680,7 @@ impl AsyncRead for SrtAsyncStream {
                     let waker = cx.waker().clone();
                     let mut epoll = Epoll::new()?;
                     epoll.add(&self.socket, &srt::SRT_EPOLL_OPT::SRT_EPOLL_IN)?;
-                    thread::spawn(move || {
+                    tokio::task::spawn_blocking(move || {
                         if let Ok(_) = epoll.wait(-1) {
                             waker.wake();
                         }
@@ -710,7 +710,7 @@ impl AsyncWrite for SrtAsyncStream {
                             let waker = cx.waker().clone();
                             let mut epoll = Epoll::new()?;
                             epoll.add(&self.socket, &srt::SRT_EPOLL_OPT::SRT_EPOLL_OUT)?;
-                            thread::spawn(move || {
+                            tokio::task::spawn_blocking(move || {
                                 if let Ok(_) = epoll.wait(-1) {
                                     waker.wake();
                                 }
@@ -736,7 +736,7 @@ impl AsyncWrite for SrtAsyncStream {
                     let waker = cx.waker().clone();
                     let mut epoll = Epoll::new()?;
                     epoll.add(&self.socket, &srt::SRT_EPOLL_OPT::SRT_EPOLL_OUT)?;
-                    thread::spawn(move || {
+                    tokio::task::spawn_blocking(move || {
                         if let Ok(_) = epoll.wait(-1) {
                             waker.wake();
                         }
@@ -762,7 +762,7 @@ impl AsyncWrite for SrtAsyncStream {
                     let waker = cx.waker().clone();
                     let mut epoll = Epoll::new()?;
                     epoll.add(&self.socket, &srt::SRT_EPOLL_OPT::SRT_EPOLL_OUT)?;
-                    thread::spawn(move || {
+                    tokio::task::spawn_blocking(move || {
                         if let Ok(_) = epoll.wait(-1) {
                             waker.wake();
                         }
@@ -872,7 +872,7 @@ impl Future for AcceptFuture {
                     let waker = cx.waker().clone();
                     let mut epoll = Epoll::new()?;
                     epoll.add(&self.socket, &srt::SRT_EPOLL_OPT::SRT_EPOLL_IN)?;
-                    thread::spawn(move || {
+                    tokio::task::spawn_blocking(move || {
                         if let Ok(_) = epoll.wait(-1) {
                             waker.wake();
                         }
@@ -908,7 +908,7 @@ impl Future for ConnectFuture {
                         let events =
                             srt::SRT_EPOLL_OPT::SRT_EPOLL_OUT | srt::SRT_EPOLL_OPT::SRT_EPOLL_ERR;
                         epoll.add(&self.socket, &events)?;
-                        thread::spawn(move || {
+                        tokio::task::spawn_blocking(move || {
                             if let Ok(_) = epoll.wait(-1) {
                                 waker.wake();
                             }
