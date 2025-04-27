@@ -232,6 +232,18 @@ impl SrtSocket {
 }
 //Public get flag methods
 impl SrtSocket {
+    pub fn srt_bistats(&self,clear: i32, instantaneous: i32) -> Result<srt::CBytePerfMon> {
+        let mut perf = srt::CBytePerfMon::default();
+        unsafe { 
+            srt::srt_bistats(
+                self.id, 
+                &mut perf as *mut srt::CBytePerfMon, 
+                clear,
+                instantaneous,
+            );
+        };   
+        Ok(perf)
+    }
     pub fn get_flight_flag_size(&self) -> Result<i32> {
         let mut packets = 0;
         let mut _optlen = mem::size_of::<i32>() as i32;
@@ -481,7 +493,7 @@ impl SrtSocket {
             )
         };
         error::handle_result(state, result)
-    }
+    }    
     pub fn get_receive_latency(&self) -> Result<i32> {
         let mut msecs = 0;
         let mut _optlen = mem::size_of::<i32>() as i32;

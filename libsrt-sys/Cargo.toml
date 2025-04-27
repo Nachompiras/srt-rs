@@ -13,4 +13,4 @@ repository = "https://github.com/nthieu173/srt-rs"
 
 [build-dependencies]
 cmake = "0.1"
-bindgen = "0.56"
+bindgen = "0.71.1"
