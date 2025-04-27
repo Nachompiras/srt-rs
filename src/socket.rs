@@ -22,6 +22,7 @@ use winapi::um::winsock2::linger;
 
 type Result<T> = std::result::Result<T, SrtError>;
 
+#[derive(PartialEq, Copy, Clone, Debug)]
 pub enum SrtSocketStatus {
     Init,
     Opened,
