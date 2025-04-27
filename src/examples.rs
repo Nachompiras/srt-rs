@@ -27,11 +27,13 @@ fn listener_receiver() -> std::io::Result<()> {
         let num_bytes: usize = tss.recv(&mut buffer).expect("recv");
 
         let status = tss.get_socket_state().expect("get_status");
-        
-        if status == SrtSocketStatus::Connected {
-            //println!("Socket is connected");
+        let bis = tss.srt_bistats(0,1).expect("get_bistats");
+        println!("BISTATS: {:?}", bis);
+
+        if status == SrtSocketStatus::Connected {            
             socket_output.send_to(&buffer[..num_bytes], &output_addr)?;
-        }            
+        }
+
     }
     
     ss.close().expect("close");
