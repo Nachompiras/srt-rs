@@ -379,8 +379,8 @@ impl SrtBuilder {
         self.opt_vec.push(SrtPreConnectOpt::PacketFilter(filter));
         self
     }
-    pub fn set_passphrase(mut self, passphrase: String) -> Self {
-        self.opt_vec.push(SrtPreConnectOpt::Passphrase(Some(passphrase)));
+    pub fn set_passphrase(mut self, passphrase: Option<String>) -> Self {
+        self.opt_vec.push(SrtPreConnectOpt::Passphrase(passphrase));
         self
     }
     pub fn set_payload_size(mut self, bytes: i32) -> Self {
@@ -1062,8 +1062,8 @@ impl SrtAsyncBuilder {
         self.opt_vec.push(SrtPreConnectOpt::PacketFilter(filter));
         self
     }
-    pub fn set_passphrase(mut self, passphrase: String) -> Self {
-        self.opt_vec.push(SrtPreConnectOpt::Passphrase(Some(passphrase)));
+    pub fn set_passphrase(mut self, passphrase: Option<String>) -> Self {
+        self.opt_vec.push(SrtPreConnectOpt::Passphrase(passphrase));
         self
     }
     pub fn set_payload_size(mut self, bytes: i32) -> Self {
