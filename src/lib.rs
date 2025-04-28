@@ -20,8 +20,7 @@ use std::{
     ops::Drop,
     os::raw::{c_char, c_int, c_void},
     pin::Pin,
-    sync::{Arc, Mutex},
-    thread,
+    sync::{Arc, Mutex}
 };
 
 pub use socket::{
@@ -100,7 +99,7 @@ impl SrtListener {
 
 impl Drop for SrtListener {
     fn drop(&mut self) {
-        if let Err(_) = self.socket.close() {}
+        if self.socket.close().is_err() {}
     }
 }
 
@@ -260,7 +259,7 @@ impl Write for SrtStream {
 
 impl Drop for SrtStream {
     fn drop(&mut self) {
-        if let Err(_) = self.socket.close() {}
+        if self.socket.close().is_err() {}
     }
 }
 
@@ -681,7 +680,7 @@ impl AsyncRead for SrtAsyncStream {
                     let mut epoll = Epoll::new()?;
                     epoll.add(&self.socket, &srt::SRT_EPOLL_OPT::SRT_EPOLL_IN)?;
                     tokio::task::spawn_blocking(move || {
-                        if let Ok(_) = epoll.wait(-1) {
+                        if epoll.wait(-1).is_ok() {
                             waker.wake();
                         }
                     });
@@ -711,7 +710,7 @@ impl AsyncWrite for SrtAsyncStream {
                             let mut epoll = Epoll::new()?;
                             epoll.add(&self.socket, &srt::SRT_EPOLL_OPT::SRT_EPOLL_OUT)?;
                             tokio::task::spawn_blocking(move || {
-                                if let Ok(_) = epoll.wait(-1) {
+                                if epoll.wait(-1).is_ok() {
                                     waker.wake();
                                 }
                             });
@@ -737,7 +736,7 @@ impl AsyncWrite for SrtAsyncStream {
                     let mut epoll = Epoll::new()?;
                     epoll.add(&self.socket, &srt::SRT_EPOLL_OPT::SRT_EPOLL_OUT)?;
                     tokio::task::spawn_blocking(move || {
-                        if let Ok(_) = epoll.wait(-1) {
+                        if epoll.wait(-1).is_ok() {
                             waker.wake();
                         }
                     });
@@ -763,7 +762,7 @@ impl AsyncWrite for SrtAsyncStream {
                     let mut epoll = Epoll::new()?;
                     epoll.add(&self.socket, &srt::SRT_EPOLL_OPT::SRT_EPOLL_OUT)?;
                     tokio::task::spawn_blocking(move || {
-                        if let Ok(_) = epoll.wait(-1) {
+                        if epoll.wait(-1).is_ok() {
                             waker.wake();
                         }
                     });
@@ -777,7 +776,7 @@ impl AsyncWrite for SrtAsyncStream {
 
 impl Drop for SrtAsyncStream {
     fn drop(&mut self) {
-        if let Err(_) = self.socket.close() {}
+        if self.socket.close().is_err() {}
     }
 }
 
@@ -801,13 +800,13 @@ extern "C" fn srt_listener_callback(opaque: *mut c_void, ns: srt::SRTSOCKET, _hs
             match callback(socket, stream_id) {
                 Ok(_) => 0,
                 Err(reason) => {
-                    if let Err(_) = socket.set_reject_reason(reason) {}
+                    let _ = socket.set_reject_reason(reason).is_err();
                     -1
                 }
             }
         },
         Err(_) => {
-            if let Err(_) = socket.set_reject_reason(error::SrtRejectReason::Predefined(400)) {}
+            let _ = socket.set_reject_reason(error::SrtRejectReason::Predefined(400)).is_err();
             -1
         }
     }
@@ -844,7 +843,7 @@ impl SrtAsyncListener {
 
 impl Drop for SrtAsyncListener {
     fn drop(&mut self) {
-        if let Err(_) = self.socket.close() {}
+        if self.socket.close().is_err() {}
     }
 }
 
@@ -873,7 +872,7 @@ impl Future for AcceptFuture {
                     let mut epoll = Epoll::new()?;
                     epoll.add(&self.socket, &srt::SRT_EPOLL_OPT::SRT_EPOLL_IN)?;
                     tokio::task::spawn_blocking(move || {
-                        if let Ok(_) = epoll.wait(-1) {
+                        if epoll.wait(-1).is_ok() {
                             waker.wake();
                         }
                     });
@@ -909,7 +908,7 @@ impl Future for ConnectFuture {
                             srt::SRT_EPOLL_OPT::SRT_EPOLL_OUT | srt::SRT_EPOLL_OPT::SRT_EPOLL_ERR;
                         epoll.add(&self.socket, &events)?;
                         tokio::task::spawn_blocking(move || {
-                            if let Ok(_) = epoll.wait(-1) {
+                            if epoll.wait(-1).is_ok() {
                                 waker.wake();
                             }
                         });
