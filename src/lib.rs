@@ -380,7 +380,7 @@ impl SrtBuilder {
         self
     }
     pub fn set_passphrase(mut self, passphrase: String) -> Self {
-        self.opt_vec.push(SrtPreConnectOpt::Passphrase(passphrase));
+        self.opt_vec.push(SrtPreConnectOpt::Passphrase(Some(passphrase)));
         self
     }
     pub fn set_payload_size(mut self, bytes: i32) -> Self {
@@ -439,8 +439,8 @@ impl SrtBuilder {
         self.opt_vec.push(SrtPreConnectOpt::SndDropDelay(msecs));
         self
     }
-    pub fn set_stream_id(mut self, id: String) -> Self {
-        self.opt_vec.push(SrtPreConnectOpt::StreamId(id));
+    pub fn set_stream_id(mut self, id: String) -> Self {    
+        self.opt_vec.push(SrtPreConnectOpt::StreamId(Some(id)));
         self
     }
     pub fn set_enforced_encryption(mut self, enforced: bool) -> Self {
@@ -494,7 +494,11 @@ impl SrtBuilder {
                 SrtPreConnectOpt::Mss(value) => socket.set_mss(value)?,
                 SrtPreConnectOpt::NakReport(value) => socket.set_nak_report(value)?,
                 SrtPreConnectOpt::PacketFilter(value) => socket.set_packet_filter(&value)?,
-                SrtPreConnectOpt::Passphrase(value) => socket.set_passphrase(&value)?,
+                SrtPreConnectOpt::Passphrase(value) => {
+                    if let Some(v) = value{
+                        socket.set_passphrase(&v)?
+                    }                    
+                },
                 SrtPreConnectOpt::PayloadSize(value) => socket.set_payload_size(value)?,
                 SrtPreConnectOpt::PBKeyLen(value) => socket.set_encryption_key_length(value)?,
                 SrtPreConnectOpt::PeerIdleTimeO(value) => socket.set_peer_idle_timeout(value)?,
@@ -510,7 +514,11 @@ impl SrtBuilder {
                 SrtPreConnectOpt::Congestion(value) => socket.set_congestion_controller(value)?,
                 SrtPreConnectOpt::SndBuf(value) => socket.set_send_buffer(value)?,
                 SrtPreConnectOpt::SndDropDelay(value) => socket.set_send_drop_delay(value)?,
-                SrtPreConnectOpt::StreamId(value) => socket.set_stream_id(&value)?,
+                SrtPreConnectOpt::StreamId(value) => {
+                    if let Some(v) = value{
+                        socket.set_stream_id(&v)?
+                    }
+                },
                 SrtPreConnectOpt::EnforcedEncryption(value) => {
                     socket.set_enforced_encryption(value)?
                 }
@@ -1055,7 +1063,7 @@ impl SrtAsyncBuilder {
         self
     }
     pub fn set_passphrase(mut self, passphrase: String) -> Self {
-        self.opt_vec.push(SrtPreConnectOpt::Passphrase(passphrase));
+        self.opt_vec.push(SrtPreConnectOpt::Passphrase(Some(passphrase)));
         self
     }
     pub fn set_payload_size(mut self, bytes: i32) -> Self {
@@ -1115,7 +1123,7 @@ impl SrtAsyncBuilder {
         self
     }
     pub fn set_stream_id(mut self, id: String) -> Self {
-        self.opt_vec.push(SrtPreConnectOpt::StreamId(id));
+        self.opt_vec.push(SrtPreConnectOpt::StreamId(Some(id)));
         self
     }
     pub fn set_enforced_encryption(mut self, enforced: bool) -> Self {
@@ -1169,7 +1177,11 @@ impl SrtAsyncBuilder {
                 SrtPreConnectOpt::Mss(value) => socket.set_mss(value)?,
                 SrtPreConnectOpt::NakReport(value) => socket.set_nak_report(value)?,
                 SrtPreConnectOpt::PacketFilter(value) => socket.set_packet_filter(&value)?,
-                SrtPreConnectOpt::Passphrase(value) => socket.set_passphrase(&value)?,
+                SrtPreConnectOpt::Passphrase(value) => {
+                    if let Some(v) = value {
+                        socket.set_passphrase(&v)?
+                    }
+                },
                 SrtPreConnectOpt::PayloadSize(value) => socket.set_payload_size(value)?,
                 SrtPreConnectOpt::PBKeyLen(value) => socket.set_encryption_key_length(value)?,
                 SrtPreConnectOpt::PeerIdleTimeO(value) => socket.set_peer_idle_timeout(value)?,
@@ -1185,7 +1197,11 @@ impl SrtAsyncBuilder {
                 SrtPreConnectOpt::Congestion(value) => socket.set_congestion_controller(value)?,
                 SrtPreConnectOpt::SndBuf(value) => socket.set_send_buffer(value)?,
                 SrtPreConnectOpt::SndDropDelay(value) => socket.set_send_drop_delay(value)?,
-                SrtPreConnectOpt::StreamId(value) => socket.set_stream_id(&value)?,
+                SrtPreConnectOpt::StreamId(value) => {
+                    if let Some(v) = value  {
+                        socket.set_stream_id(&v)?
+                    }
+                },
                 SrtPreConnectOpt::EnforcedEncryption(value) => {
                     socket.set_enforced_encryption(value)?
                 }
@@ -1221,7 +1237,7 @@ enum SrtPreConnectOpt {
     Mss(i32),
     NakReport(bool),
     PacketFilter(String),
-    Passphrase(String),
+    Passphrase(Option<String>),
     PayloadSize(i32),
     PBKeyLen(i32),
     PeerIdleTimeO(i32),
@@ -1235,7 +1251,7 @@ enum SrtPreConnectOpt {
     Congestion(SrtCongestionController),
     SndBuf(i32),
     SndDropDelay(i32),
-    StreamId(String),
+    StreamId(Option<String>),
     EnforcedEncryption(bool),
     TlPktDrop(bool),
     TransType(SrtTransmissionType),
