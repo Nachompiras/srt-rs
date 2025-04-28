@@ -439,8 +439,8 @@ impl SrtBuilder {
         self.opt_vec.push(SrtPreConnectOpt::SndDropDelay(msecs));
         self
     }
-    pub fn set_stream_id(mut self, id: String) -> Self {    
-        self.opt_vec.push(SrtPreConnectOpt::StreamId(Some(id)));
+    pub fn set_stream_id(mut self, id: Option<String>) -> Self {    
+        self.opt_vec.push(SrtPreConnectOpt::StreamId(id));
         self
     }
     pub fn set_enforced_encryption(mut self, enforced: bool) -> Self {
@@ -1122,8 +1122,8 @@ impl SrtAsyncBuilder {
         self.opt_vec.push(SrtPreConnectOpt::SndDropDelay(msecs));
         self
     }
-    pub fn set_stream_id(mut self, id: String) -> Self {
-        self.opt_vec.push(SrtPreConnectOpt::StreamId(Some(id)));
+    pub fn set_stream_id(mut self, id: Option<String>) -> Self {
+        self.opt_vec.push(SrtPreConnectOpt::StreamId(id));
         self
     }
     pub fn set_enforced_encryption(mut self, enforced: bool) -> Self {
