@@ -104,7 +104,7 @@ impl Drop for SrtListener {
 }
 
 pub struct SrtStream {
-    socket: SrtSocket,
+    pub socket: SrtSocket,
 }
 
 impl SrtStream {
