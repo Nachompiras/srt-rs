@@ -81,7 +81,7 @@ pub fn async_builder() -> SrtAsyncBuilder {
 }
 
 pub struct SrtListener {
-    socket: SrtSocket,
+    pub socket: SrtSocket,
 }
 
 impl SrtListener {
@@ -264,7 +264,7 @@ impl Drop for SrtStream {
 }
 
 pub struct SrtBoundSocket {
-    socket: SrtSocket,
+    pub socket: SrtSocket,
 }
 
 impl SrtBoundSocket {
