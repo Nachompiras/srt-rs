@@ -7,7 +7,7 @@ use srt::sockaddr;
 
 use std::{
     convert::TryInto,
-    ffi::c_void,
+    ffi::{c_void, CString},
     iter::FromIterator,
     mem,
     net::{SocketAddr, ToSocketAddrs},
@@ -1157,15 +1157,23 @@ impl SrtSocket {
         error::handle_result((), result)
     }
     pub fn set_stream_id(&self, id: &str) -> Result<()> {
-        let result = unsafe {
-            srt::srt_setsockflag(
+        // 1) Validación protocolo: máx 512 bytes (no chars)
+        if id.len() > 512 {
+            return Err(SrtError::SockFail);
+        }
+        // 2) CString (sin NULes interiores). as_bytes() devuelve longitud sin el NUL final
+        let c = std::ffi::CString::new(id).map_err(|_| SrtError::SockFail)?;
+        let ptr = c.as_ptr();                 // *const c_char (terminado en NUL)
+        let len: c_int = c.as_bytes().len() as c_int; // longitud real, sin NUL
+
+        // 3) setsockopt seguro
+        let rc = unsafe { srt::srt_setsockflag(
                 self.id,
                 srt::SRT_SOCKOPT::SRTO_STREAMID,
-                id[..512].as_ptr() as *const c_void,
-                id[..512].len() as i32,
-            )
-        };
-        error::handle_result((), result)
+                ptr as *const c_void,
+                len,
+            ) };
+        error::handle_result((), rc)
     }
     pub fn set_enforced_encryption(&self, enforced: bool) -> Result<()> {
         let result = unsafe {
