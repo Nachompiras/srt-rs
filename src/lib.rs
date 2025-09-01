@@ -934,7 +934,7 @@ impl Future for ConnectFuture {
 }
 
 pub struct SrtBoundAsyncSocket {
-    socket: SrtSocket,
+    pub socket: SrtSocket,
 }
 
 impl SrtBoundAsyncSocket {
