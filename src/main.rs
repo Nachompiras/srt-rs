@@ -81,32 +81,30 @@ async fn listener_sender() -> std::io::Result<()>{
     let mut buffer = [0; 65507];
 
 
-    let ss = SrtSocket::new().expect("create_socket");
-    // let nn = SrtAsyncBuilder::new()
-    //     .set_socket_type(SrtSocketType::Listener)
-    //     .set_stream_id(1)
-    //     .set_max_connections(2)
-    //     .build()
-    //     .expect("create_socket");
+    //let ss = SrtSocket::new().expect("create_socket");
+    //ss.bind(output_addr).expect("bind");
 
-    // let ss: Result<SrtAsyncListener, error::SrtError> = async_builder()
-    //         .set_live_transmission_type()
-    //         .listen(output_addr, 2, None);
-            
-
-
-
-    ss.bind(output_addr).expect("bind");
-
-    ss.listen(2).expect("listen");
+    //ss.listen(2).expect("listen");
+    //let (tss, _taddr) = ss.accept().expect("accept");
+    let ss = match srt::builder()
+        .set_live_transmission_type()
+        .listen(output_addr.to_string().as_str(), 2) {
+            Ok(ss) => ss,
+            Err(e) => {
+                println!("Error creating SRT listener: {}", e);
+                return Err(Error::new(std::io::ErrorKind::Other, "Error creating SRT listener"));
+            }
+        };
 
     let (tss, _taddr) = ss.accept().expect("accept");
+    println!("Accepted connection from {:?}", _taddr);
+    println!("Socket Accepted on {:?}", ss.socket.get_socket_state());
 
     loop {
         // Recibir datos
         let num_bytes = socket.recv(&mut buffer)?;
 
-        let status = tss.get_socket_state().expect("get_status");
+        let status = tss.socket.get_socket_state().expect("get_status");
         
         if status == SrtSocketStatus::Connected {
             //println!("Socket is connected");
@@ -123,7 +121,7 @@ async fn listener_sender() -> std::io::Result<()>{
 
 //SRT Caller Receiver -> UDP Output
 fn caller_receiver() -> std::io::Result<()>{
-    let remote = "190.216.145.217:33214"; // args.next().unwrap();
+    let remote = "0:00"; // args.next().unwrap();
     let output_addr: SocketAddr = "127.0.0.1:9090".parse().unwrap();
 
     let addr: SocketAddr = remote.parse().expect("Invalid addr:port syntax");
@@ -236,11 +234,15 @@ fn main() {
     //     std::thread::sleep(std::time::Duration::from_secs(1));       
     // }
         
+    // loop {
+    //     caller_receiver();
+    //     std::thread::sleep(std::time::Duration::from_secs(1));
+    // }
+    
     loop {
-        caller_receiver();
+        listener_sender();
         std::thread::sleep(std::time::Duration::from_secs(1));
     }
-    
     //listener_sender().expect("listener_sender");
     //caller_sender();
 
