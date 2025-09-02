@@ -209,36 +209,41 @@ fn caller_sender() -> std::io::Result<()> {
     
     let mut buffer = [0; 65507];
 
+    let ss = match srt::builder()
+        .set_live_transmission_type()
+        .connect(output_addr) {
+            Ok(ss) => ss,
+            Err(e) => {
+                println!("Error connecting: {}", e);
+                return Err(Error::new(std::io::ErrorKind::Other, "Error connecting"));
+            }
+        };
+    
     loop {
-        let ss = SrtSocket::new().expect("create_socket");
 
-        match ss.connect(output_addr) {
-            Ok(_) => {        
-                loop {
-        
-                    let (num_bytes, _) = socket.recv_from(&mut buffer)?;
-            
-                    let status = ss.get_socket_state().expect("get_status");
-                    
-                    if status == SrtSocketStatus::Connected {
-                        //println!("Socket is connected");
-                        ss.send(&buffer[..num_bytes]).expect("send");
+        let (num_bytes, _) = socket.recv_from(&mut buffer)?;
+
+        let status = match ss.socket.get_socket_state() {
+            Ok(status) => {
+                if status == SrtSocketStatus::Connected {
+                    println!("Socket is connected");
+                    if let Err(e) = ss.socket.send(&Bytes::copy_from_slice(&buffer[..num_bytes])) {
+                        println!("Error sending data to SRT: {}", e);
                     }
-                    else if status == SrtSocketStatus::Closed {
-                        println!("Socket is closed");
-                        break; // Salir del bucle si el socket se desconecta
-                    } else {
-                        println!("Socket state: {:?}", status);            
-                    }        
+                } else if status == SrtSocketStatus::Closed {
+                    println!("Socket is closed");
+                    break; // Salir del bucle si el socket se desconecta
+                } else {
+                    println!("Socket state: {:?}", status);            
                 }
             }
             Err(e) => {
-                println!("Error to connect: {}", e);                
+                println!("Error getting socket state: {}", e);
+                return Err(Error::new(std::io::ErrorKind::Other, "Error getting socket state"));
             }
-        }; 
-        //sleep and retry
-        std::thread::sleep(std::time::Duration::from_secs(5));       
-    }
+        };                
+    }                
+        
     Ok(())
 }
 
@@ -257,13 +262,17 @@ fn main() {
     //     std::thread::sleep(std::time::Duration::from_secs(1));
     // }
     
+    // loop {
+    //     println!("Starting listener_sender");
+    //     listener_sender();
+    //     std::thread::sleep(std::time::Duration::from_secs(1));
+    // }
+    
     loop {
-        println!("Starting listener_sender");
-        listener_sender();
+        println!("Starting caller_sender");
+        caller_sender();
         std::thread::sleep(std::time::Duration::from_secs(1));
     }
-    //listener_sender().expect("listener_sender");
-    //caller_sender();
 
     srt::cleanup().expect("cleanup");
 }
