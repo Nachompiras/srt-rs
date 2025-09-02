@@ -1,3 +1,4 @@
+use futures::future::ok;
 use libc::stat;
 use srt_rs::{self as srt};
 use srt_rs::*;
@@ -28,9 +29,6 @@ fn listener_receiver() -> std::io::Result<()> {
     let ss = srt::builder()
         .set_live_transmission_type()
         .listen(remote, 2).expect("asd");
-
-
-    println!("Socket listening on {:?}", ss.socket.get_socket_state());
 
     let (tss, _taddr) = ss.accept().expect("accept");
     println!("Accepted connection from {:?}", _taddr);
@@ -125,29 +123,63 @@ async fn listener_sender() -> std::io::Result<()>{
 
 //SRT Caller Receiver -> UDP Output
 fn caller_receiver() -> std::io::Result<()>{
-    let remote = "addr:port"; // args.next().unwrap();
+    let remote = "190.216.145.217:33214"; // args.next().unwrap();
     let output_addr: SocketAddr = "127.0.0.1:9090".parse().unwrap();
 
     let addr: SocketAddr = remote.parse().expect("Invalid addr:port syntax");
-
+    /*
     let ss = SrtSocket::new().expect("create_socket");
 
     ss.connect(addr).expect("connect");
 
-    let socket_output = UdpSocket::bind("0.0.0.0:0")?;
+    
+    */
 
+    let ss = match srt::builder()
+        .set_live_transmission_type()
+        .connect(remote) {
+            Ok(ss) => ss,
+            Err(e) => {
+                println!("Error connecting: {}", e);
+                return Err(Error::new(std::io::ErrorKind::Other, "Error connecting"));
+            }
+        };
+
+    let socket_output = UdpSocket::bind("0.0.0.0:0")?;
+    println!("Connected to {}", remote);
     loop {
         let mut buffer = [0u8; 2048];
-        let num_bytes = ss.recv(&mut buffer).expect("recv");
-
-        let status = ss.get_socket_state().expect("get_status");
-        
-        if status == SrtSocketStatus::Connected {
-            //println!("Socket is connected");
-            socket_output.send_to(&buffer[..num_bytes], &output_addr)?;
-        } else {
-            println!("Socket is not connected");
-        }                
+        match ss.socket.recv(&mut buffer) {
+            Ok(n) => {
+                // Data received successfully
+                match ss.socket.get_socket_state() {
+                    Ok(status) => {
+                        if status == SrtSocketStatus::Connected {
+                            //println!("Socket is connected");
+                            match socket_output.send_to(&buffer[..n], &output_addr) {
+                                Ok(_) => {},
+                                Err(e) => {
+                                    println!("Error sending to UDP: {}", e);
+                                }
+                            }
+                        }   
+                        else if status == SrtSocketStatus::Closed {
+                            println!("Socket is closed");
+                            //break; // Salir del bucle si el socket se desconecta
+                        } else {
+                            println!("Socket state: {:?}", status);                        
+                        }     
+                    }
+                    Err(e) => {
+                        println!("Error getting socket state: {}", e);
+                    }
+                }                   
+            }
+            Err(e) => {
+                println!("Error receiving data: {}", e);
+                return Ok(());
+            }
+        }        
     }
 }
 
@@ -199,13 +231,16 @@ fn main() {
     
     srt::startup().expect("startup");
 
-    loop {
-        listener_receiver();
-        std::thread::sleep(std::time::Duration::from_secs(1));       
-    }
+    // loop {
+    //     listener_receiver();
+    //     std::thread::sleep(std::time::Duration::from_secs(1));       
+    // }
         
-
-    //caller_receiver().expect("caller_receiver");
+    loop {
+        caller_receiver();
+        std::thread::sleep(std::time::Duration::from_secs(1));
+    }
+    
     //listener_sender().expect("listener_sender");
     //caller_sender();
 
