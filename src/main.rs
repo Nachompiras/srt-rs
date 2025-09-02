@@ -2,7 +2,7 @@ use futures::future::ok;
 use libc::stat;
 use srt_rs::{self as srt};
 use srt_rs::*;
-
+use bytes::Bytes;
 use std::{io::Error, net::{SocketAddr, UdpSocket}};
 
 //SRT Listener Receiver -> UDP Output
@@ -69,7 +69,8 @@ fn listener_receiver() -> std::io::Result<()> {
 }
 
 // UDP Input -> SRT Listener sender
-async fn listener_sender() -> std::io::Result<()>{
+fn listener_sender() -> std::io::Result<()>{
+    println!("Starting listener_sender fn");
     let input_addr = "127.0.0.1:8080";
     // Dirección de salida UDP
     let output_addr: SocketAddr = "127.0.0.1:9090".parse().unwrap();
@@ -78,8 +79,7 @@ async fn listener_sender() -> std::io::Result<()>{
     let socket = UdpSocket::bind(input_addr)?;
     println!("Listening {}", input_addr);
 
-    let mut buffer = [0; 65507];
-
+    let mut buffer = [0u8; 65507];
 
     //let ss = SrtSocket::new().expect("create_socket");
     //ss.bind(output_addr).expect("bind");
@@ -102,20 +102,38 @@ async fn listener_sender() -> std::io::Result<()>{
 
     loop {
         // Recibir datos
-        let num_bytes = socket.recv(&mut buffer)?;
-
-        let status = tss.socket.get_socket_state().expect("get_status");
-        
-        if status == SrtSocketStatus::Connected {
-            //println!("Socket is connected");
-            tss.send(&buffer[..num_bytes]).expect("send");
-        }   
-        else if status == SrtSocketStatus::Closed {
-            println!("Socket is closed");
-            //break; // Salir del bucle si el socket se desconecta
-        } else {
-            println!("Socket state: {:?}", status);                        
-        }     
+        match socket.recv_from(&mut buffer) {
+            Ok((len, src_addr)) => {                
+                match tss.socket.get_socket_state() {
+                    Ok(status) => {                        
+                        if status == SrtSocketStatus::Connected {
+                            let data = Bytes::copy_from_slice(&buffer[..len]);
+                            
+                            if let Err(e) = tss.socket.send(&data) {
+                                println!("Error sending data to SRT: {}", e);
+                            }
+                            //println!("Socket is connected");
+                            //tss.socket.send(&buffer[..num_bytes]).expect("send");
+                        }   
+                        else if status == SrtSocketStatus::Closed {
+                            println!("Socket is closed");
+                            return Ok(());
+                            //break; // Salir del bucle si el socket se desconecta
+                        } else {
+                            println!("Socket state: {:?}", status);                                                    
+                        }     
+                    },
+                    Err(e) => {
+                        println!("Error getting socket state: {}", e);
+                        continue;
+                    }
+                };    
+            },
+            Err(e) => {
+                println!("Error receiving data: {}", e);
+                return Ok(())
+            }
+        };            
     }
 }
 
@@ -240,6 +258,7 @@ fn main() {
     // }
     
     loop {
+        println!("Starting listener_sender");
         listener_sender();
         std::thread::sleep(std::time::Duration::from_secs(1));
     }
