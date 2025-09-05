@@ -27,6 +27,8 @@ pub use socket::{
     SrtCongestionController, SrtKmState, SrtSocket, SrtSocketStatus, SrtTransmissionType,
 };
 
+pub type SrtStats = srt::CBytePerfMon;
+
 type Result<T> = std::result::Result<T, SrtError>;
 
 pub fn startup() -> Result<()> {
@@ -239,6 +241,9 @@ impl SrtStream {
     }
     pub fn get_srt_version(&self) -> Result<i32> {
         self.socket.get_srt_version()
+    }
+    pub fn get_bistats(&self, clear: i32, instantaneous: i32) -> Result<SrtStats> {
+        self.socket.srt_bistats(clear, instantaneous)
     }
 }
 
@@ -665,6 +670,9 @@ impl SrtAsyncStream {
     }
     pub fn get_srt_version(&self) -> Result<i32> {
         self.socket.get_srt_version()
+    }
+    pub fn get_bistats(&self, clear: i32, instantaneous: i32) -> Result<SrtStats> {
+        self.socket.srt_bistats(clear, instantaneous)
     }
 }
 
@@ -1407,7 +1415,7 @@ mod tests {
         let listen_task = async move {
             let listen = srt::async_builder()
                 .set_file_transmission_type()
-                .listen("[::1]:0", 1)
+                .listen("[::1]:0", 1, None)
                 .expect("fail listen()");
             let local = listen.local_addr().expect("fail local_addr()");
             tx.send(local).expect("fail send through mpsc channel");
@@ -1471,7 +1479,7 @@ mod tests {
         let listen_task = async move {
             let listen = srt::async_builder()
                 .set_file_transmission_type()
-                .listen("127.0.0.1:0", 1)
+                .listen("127.0.0.1:0", 1, None)
                 .expect("fail listen()");
             let local = listen.local_addr().expect("fail local_addr()");
             tx.send(local).expect("fail send through mpsc channel");
