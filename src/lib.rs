@@ -541,7 +541,7 @@ impl SrtBuilder {
 }
 
 pub struct SrtAsyncStream {
-    socket: SrtSocket,
+    pub socket: SrtSocket,
 }
 
 impl SrtAsyncStream {
