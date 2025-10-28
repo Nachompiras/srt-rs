@@ -1022,8 +1022,8 @@ impl SrtSocket {
             srt::srt_setsockflag(
                 self.id,
                 srt::SRT_SOCKOPT::SRTO_PACKETFILTER,
-                filter[..512].as_ptr() as *const c_void,
-                filter[..512].len() as i32,
+                filter.as_ptr() as *const c_void,
+                filter.len() as i32,
             )
         };
         error::handle_result((), result)
