@@ -7,7 +7,7 @@ use srt::sockaddr;
 
 use std::{
     convert::TryInto,
-    ffi::{c_void, CString},
+    ffi::c_void,
     iter::FromIterator,
     mem,
     net::{SocketAddr, ToSocketAddrs},
@@ -724,6 +724,40 @@ impl SrtSocket {
         };
         error::handle_result(version, result)
     }
+    pub fn get_packet_filter(&self) -> Result<String> {
+        let mut buffer = [0u8; 512];
+        let mut optlen = buffer.len() as i32;
+        let result = unsafe {
+            srt::srt_getsockflag(
+                self.id,
+                srt::SRT_SOCKOPT::SRTO_PACKETFILTER,
+                buffer.as_mut_ptr() as *mut c_void,
+                &mut optlen as *mut c_int,
+            )
+        };
+        if result == 0 {
+            let len = optlen.min(buffer.len() as i32) as usize;
+            // Find the null terminator or use full length
+            let end = buffer[..len].iter().position(|&b| b == 0).unwrap_or(len);
+            String::from_utf8(buffer[..end].to_vec())
+                .map_err(|_| SrtError::InvParam)
+        } else {
+            error::handle_result(String::new(), result)
+        }
+    }
+    pub fn get_retransmit_algorithm(&self) -> Result<i32> {
+        let mut algo = 0;
+        let mut _optlen = mem::size_of::<i32>() as i32;
+        let result = unsafe {
+            srt::srt_getsockflag(
+                self.id,
+                srt::SRT_SOCKOPT::SRTO_RETRANSMITALGO,
+                &mut algo as *mut i32 as *mut c_void,
+                &mut _optlen as *mut c_int,
+            )
+        };
+        error::handle_result(algo, result)
+    }
 }
 //Post set flag methods
 impl SrtSocket {
@@ -1245,6 +1279,52 @@ impl SrtSocket {
             )
         };
         error::handle_result((), result)
+    }
+    pub fn set_retransmit_algorithm(&self, algo: i32) -> Result<()> {
+        let result = unsafe {
+            srt::srt_setsockflag(
+                self.id,
+                srt::SRT_SOCKOPT::SRTO_RETRANSMITALGO,
+                &algo as *const c_int as *const c_void,
+                mem::size_of::<i32>() as c_int,
+            )
+        };
+        error::handle_result((), result)
+    }
+    /// Configures FEC (Forward Error Correction) using the packet filter API.
+    ///
+    /// # FEC Configuration Format
+    ///
+    /// The FEC filter uses the format: "fec,cols:N,rows:M[,arq:LEVEL][,layout:staircase]"
+    ///
+    /// - `cols`: Number of columns (horizontal groups), typically the number of data packets per FEC block
+    /// - `rows`: Number of rows (vertical groups), determines redundancy level
+    /// - `arq`: ARQ level - "never" (0), "onreq" (1), or "always" (2). Default is "always"
+    /// - `layout`: Optional "staircase" arrangement for improved loss recovery
+    ///
+    /// # Examples
+    ///
+    /// ```no_run
+    /// # use srt_rs::SrtSocket;
+    /// # let socket = SrtSocket::new().unwrap();
+    /// // Configure FEC with 10 columns and 5 rows (50% redundancy)
+    /// socket.set_fec_config(10, 5, None, false).unwrap();
+    ///
+    /// // Configure FEC with custom ARQ level and staircase layout
+    /// socket.set_fec_config(10, 5, Some(1), true).unwrap();
+    /// ```
+    pub fn set_fec_config(&self, cols: u32, rows: u32, arq_level: Option<u32>, staircase: bool) -> Result<()> {
+        let mut config = format!("fec,cols:{},rows:{}", cols, rows);
+
+        if let Some(level) = arq_level {
+            config.push_str(&format!(",arq:{}", level));
+        }
+
+        if staircase {
+            config.push_str(",layout:staircase");
+        }
+
+        self.set_packet_filter(&config)
     }
 }
 

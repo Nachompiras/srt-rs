@@ -384,6 +384,29 @@ impl SrtBuilder {
         self.opt_vec.push(SrtPreConnectOpt::PacketFilter(filter));
         self
     }
+    /// Configures FEC (Forward Error Correction) using the packet filter API.
+    ///
+    /// # FEC Configuration
+    ///
+    /// - `cols`: Number of columns (horizontal groups), number of data packets per FEC block
+    /// - `rows`: Number of rows (vertical groups), determines redundancy level
+    /// - `arq_level`: ARQ level - 0 (never), 1 (onreq), or 2 (always). None uses default
+    /// - `staircase`: Use staircase layout for improved loss recovery
+    ///
+    /// # Example
+    ///
+    /// ```no_run
+    /// # use srt_rs;
+    /// let stream = srt_rs::builder()
+    ///     .set_fec_config(10, 5, None, false)
+    ///     .set_live_transmission_type()
+    ///     .connect("127.0.0.1:8080")
+    ///     .unwrap();
+    /// ```
+    pub fn set_fec_config(mut self, cols: u32, rows: u32, arq_level: Option<u32>, staircase: bool) -> Self {
+        self.opt_vec.push(SrtPreConnectOpt::FecConfig { cols, rows, arq_level, staircase });
+        self
+    }
     pub fn set_passphrase(mut self, passphrase: Option<String>) -> Self {
         self.opt_vec.push(SrtPreConnectOpt::Passphrase(passphrase));
         self
@@ -499,10 +522,13 @@ impl SrtBuilder {
                 SrtPreConnectOpt::Mss(value) => socket.set_mss(value)?,
                 SrtPreConnectOpt::NakReport(value) => socket.set_nak_report(value)?,
                 SrtPreConnectOpt::PacketFilter(value) => socket.set_packet_filter(&value)?,
+                SrtPreConnectOpt::FecConfig { cols, rows, arq_level, staircase } => {
+                    socket.set_fec_config(cols, rows, arq_level, staircase)?
+                }
                 SrtPreConnectOpt::Passphrase(value) => {
                     if let Some(v) = value{
                         socket.set_passphrase(&v)?
-                    }                    
+                    }
                 },
                 SrtPreConnectOpt::PayloadSize(value) => socket.set_payload_size(value)?,
                 SrtPreConnectOpt::PBKeyLen(value) => socket.set_encryption_key_length(value)?,
@@ -1070,6 +1096,35 @@ impl SrtAsyncBuilder {
         self.opt_vec.push(SrtPreConnectOpt::PacketFilter(filter));
         self
     }
+    /// Configures FEC (Forward Error Correction) using the packet filter API.
+    ///
+    /// # FEC Configuration
+    ///
+    /// - `cols`: Number of columns (horizontal groups), number of data packets per FEC block
+    /// - `rows`: Number of rows (vertical groups), determines redundancy level
+    /// - `arq_level`: ARQ level - 0 (never), 1 (onreq), or 2 (always). None uses default
+    /// - `staircase`: Use staircase layout for improved loss recovery
+    ///
+    /// # Example
+    ///
+    /// ```no_run
+    /// # use srt_rs;
+    /// # use tokio;
+    /// # #[tokio::main]
+    /// # async fn main() {
+    /// let stream = srt_rs::async_builder()
+    ///     .set_fec_config(10, 5, None, false)
+    ///     .set_live_transmission_type()
+    ///     .connect("127.0.0.1:8080")
+    ///     .unwrap()
+    ///     .await
+    ///     .unwrap();
+    /// # }
+    /// ```
+    pub fn set_fec_config(mut self, cols: u32, rows: u32, arq_level: Option<u32>, staircase: bool) -> Self {
+        self.opt_vec.push(SrtPreConnectOpt::FecConfig { cols, rows, arq_level, staircase });
+        self
+    }
     pub fn set_passphrase(mut self, passphrase: Option<String>) -> Self {
         self.opt_vec.push(SrtPreConnectOpt::Passphrase(passphrase));
         self
@@ -1185,6 +1240,9 @@ impl SrtAsyncBuilder {
                 SrtPreConnectOpt::Mss(value) => socket.set_mss(value)?,
                 SrtPreConnectOpt::NakReport(value) => socket.set_nak_report(value)?,
                 SrtPreConnectOpt::PacketFilter(value) => socket.set_packet_filter(&value)?,
+                SrtPreConnectOpt::FecConfig { cols, rows, arq_level, staircase } => {
+                    socket.set_fec_config(cols, rows, arq_level, staircase)?
+                }
                 SrtPreConnectOpt::Passphrase(value) => {
                     if let Some(v) = value {
                         socket.set_passphrase(&v)?
@@ -1245,6 +1303,7 @@ enum SrtPreConnectOpt {
     Mss(i32),
     NakReport(bool),
     PacketFilter(String),
+    FecConfig { cols: u32, rows: u32, arq_level: Option<u32>, staircase: bool },
     Passphrase(Option<String>),
     PayloadSize(i32),
     PBKeyLen(i32),
