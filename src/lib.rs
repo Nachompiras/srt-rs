@@ -31,6 +31,11 @@ pub type SrtStats = srt::CBytePerfMon;
 
 type Result<T> = std::result::Result<T, SrtError>;
 
+/// Timeout for epoll wait operations in milliseconds.
+/// Using a finite timeout prevents blocking threads indefinitely when
+/// the remote peer is unreachable or the connection is broken.
+const EPOLL_TIMEOUT_MS: i64 = 5000; // 5 seconds
+
 pub fn startup() -> Result<()> {
     let result = unsafe { srt::srt_startup() };
     match result {
@@ -722,9 +727,9 @@ impl AsyncRead for SrtAsyncStream {
                     let mut epoll = Epoll::new()?;
                     epoll.add(&self.socket, &srt::SRT_EPOLL_OPT::SRT_EPOLL_IN)?;
                     tokio::task::spawn_blocking(move || {
-                        if epoll.wait(-1).is_ok() {
-                            waker.wake();
-                        }
+                        // Always wake after timeout/event/error to re-evaluate socket state
+                        let _ = epoll.wait(EPOLL_TIMEOUT_MS);
+                        waker.wake();
                     });
                     Poll::Pending
                 }
@@ -752,7 +757,7 @@ impl AsyncWrite for SrtAsyncStream {
                             let mut epoll = Epoll::new()?;
                             epoll.add(&self.socket, &srt::SRT_EPOLL_OPT::SRT_EPOLL_OUT)?;
                             tokio::task::spawn_blocking(move || {
-                                if epoll.wait(-1).is_ok() {
+                                if epoll.wait(EPOLL_TIMEOUT_MS).is_ok() {
                                     waker.wake();
                                 }
                             });
@@ -778,9 +783,9 @@ impl AsyncWrite for SrtAsyncStream {
                     let mut epoll = Epoll::new()?;
                     epoll.add(&self.socket, &srt::SRT_EPOLL_OPT::SRT_EPOLL_OUT)?;
                     tokio::task::spawn_blocking(move || {
-                        if epoll.wait(-1).is_ok() {
-                            waker.wake();
-                        }
+                        // Always wake after timeout/event/error to re-evaluate socket state
+                        let _ = epoll.wait(EPOLL_TIMEOUT_MS);
+                        waker.wake();
                     });
                     Poll::Pending
                 }
@@ -804,9 +809,9 @@ impl AsyncWrite for SrtAsyncStream {
                     let mut epoll = Epoll::new()?;
                     epoll.add(&self.socket, &srt::SRT_EPOLL_OPT::SRT_EPOLL_OUT)?;
                     tokio::task::spawn_blocking(move || {
-                        if epoll.wait(-1).is_ok() {
-                            waker.wake();
-                        }
+                        // Always wake after timeout/event/error to re-evaluate socket state
+                        let _ = epoll.wait(EPOLL_TIMEOUT_MS);
+                        waker.wake();
                     });
                     Poll::Pending
                 }
@@ -914,9 +919,9 @@ impl Future for AcceptFuture {
                     let mut epoll = Epoll::new()?;
                     epoll.add(&self.socket, &srt::SRT_EPOLL_OPT::SRT_EPOLL_IN)?;
                     tokio::task::spawn_blocking(move || {
-                        if epoll.wait(-1).is_ok() {
-                            waker.wake();
-                        }
+                        // Always wake after timeout/event/error to re-evaluate socket state
+                        let _ = epoll.wait(EPOLL_TIMEOUT_MS);
+                        waker.wake();
                     });
                     Poll::Pending
                 }
@@ -950,9 +955,9 @@ impl Future for ConnectFuture {
                             srt::SRT_EPOLL_OPT::SRT_EPOLL_OUT | srt::SRT_EPOLL_OPT::SRT_EPOLL_ERR;
                         epoll.add(&self.socket, &events)?;
                         tokio::task::spawn_blocking(move || {
-                            if epoll.wait(-1).is_ok() {
-                                waker.wake();
-                            }
+                            // Always wake after timeout/event/error to re-evaluate socket state
+                            let _ = epoll.wait(EPOLL_TIMEOUT_MS);
+                            waker.wake();
                         });
                         Poll::Pending
                     }
