@@ -7,17 +7,30 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     if cfg!(unix) {
         let dst = cmake::Config::new("libsrt1")
             .define("ENABLE_APPS", "OFF")
+            .define("ENABLE_SHARED", "OFF")
+            .define("ENABLE_STATIC", "ON")
             .build();
         let mut lib_dir = PathBuf::from(dst);
         lib_dir.push("lib");
         println!("cargo:rustc-link-search={}", lib_dir.display());
-        println!("cargo:rustc-link-lib=srt");
+        println!("cargo:rustc-link-lib=static=srt");
+
+        // SRT depends on these system libraries when linked statically
+        if cfg!(target_os = "macos") {
+            println!("cargo:rustc-link-lib=c++");
+        } else {
+            println!("cargo:rustc-link-lib=stdc++");
+        }
+        println!("cargo:rustc-link-lib=crypto");
+        println!("cargo:rustc-link-lib=ssl");
     } else if cfg!(windows) {
-        let dst = cmake::Config::new("libsrt1")            
+        let dst = cmake::Config::new("libsrt1")
             .cxxflag("/EHs")
             .define("ENABLE_STDCXX_SYNC", "ON")
             .define("ENABLE_APPS", "OFF")
             .define("ENABLE_BONDING", "ON")
+            .define("ENABLE_SHARED", "OFF")
+            .define("ENABLE_STATIC", "ON")
             .build();
         let mut lib_dir = PathBuf::from(dst.clone());
         lib_dir.push("lib");
@@ -25,7 +38,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         bin_dir.push("bin");
         println!("cargo:rustc-link-search={}", lib_dir.display());
         println!("cargo:rustc-link-search={}", bin_dir.display());
-        println!("cargo:rustc-link-lib=srt");
+        println!("cargo:rustc-link-lib=static=srt");
     }
 
     let mut include_path = PathBuf::from(env::var("OUT_DIR").unwrap());
