@@ -51,6 +51,7 @@ pub enum SrtError {
     Timeout,
     Congest,
     PeerErr,
+    BindConflict,
 }
 
 impl Display for SrtError {
@@ -113,6 +114,7 @@ impl From<SrtError> for io::Error {
                 SrtError::InvalMsgApi => ErrorKind::InvalidInput,
                 SrtError::InvalBufferApi => ErrorKind::InvalidInput,
                 SrtError::DupListen => ErrorKind::AddrInUse,
+                SrtError::BindConflict => ErrorKind::AddrInUse,
                 SrtError::LargeMsg => ErrorKind::Other,
                 SrtError::InvPollId => ErrorKind::AddrNotAvailable,
                 SrtError::PollEmpty => ErrorKind::Other,
@@ -172,7 +174,8 @@ impl From<srt::SRT_ERRNO> for SrtError {
             srt::SRT_ERRNO::SRT_ETIMEOUT => SrtError::Timeout,
             srt::SRT_ERRNO::SRT_ECONGEST => SrtError::Congest,
             srt::SRT_ERRNO::SRT_EPEERERR => SrtError::PeerErr,
-            _ => unreachable!("unrecognized error no"),
+            srt::SRT_ERRNO::SRT_EBINDCONFLICT => SrtError::BindConflict,
+            _ => SrtError::Unknown,
         }
     }
 }
@@ -211,6 +214,7 @@ fn error_msg(err: &SrtError) -> String {
         SrtError::InvalMsgApi => "The function was used incorrectly in the message API".to_string(),
         SrtError::InvalBufferApi => "The function was used incorrectly in the stream (buffer) API".to_string(),
         SrtError::DupListen => "The port tried to be bound for listening is already busy".to_string(),
+        SrtError::BindConflict => "Binding specification conflicts with existing one".to_string(),
         SrtError::LargeMsg => "Size exceeded".to_string(),
         SrtError::InvPollId => "The epoll ID passed to an epoll function is invalid".to_string(),
         SrtError::PollEmpty => "The epoll container currently has no subscribed sockets".to_string(),
