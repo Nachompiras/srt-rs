@@ -1756,4 +1756,61 @@ mod tests {
         block_on(future::join(one_task, two_task));
         srt::cleanup().expect("failed cleanup");
     }
+    #[test]
+    fn test_udp_buffer_mapping() {
+        srt::startup().expect("failed startup");
+
+        // Use asymmetric values so a swap would be detectable
+        let udp_snd: i32 = 1_048_576;  // 1 MB
+        let udp_rcv: i32 = 2_097_152;  // 2 MB
+
+        let stream = srt::builder()
+            .set_udp_send_buffer(udp_snd)
+            .set_udp_receive_buffer(udp_rcv)
+            .set_file_transmission_type()
+            .listen("127.0.0.1:0", 1)
+            .expect("fail listen()");
+
+        let actual_snd = stream.socket.get_udp_send_buffer().expect("get snd");
+        let actual_rcv = stream.socket.get_udp_receive_buffer().expect("get rcv");
+
+        // The OS may round up buffer sizes, so check ordering rather than exact values.
+        // If swapped, snd would be >= 2MB and rcv would be ~1MB.
+        assert!(
+            actual_snd < actual_rcv,
+            "UDP buffers appear swapped: snd={} should be < rcv={} \
+             (configured snd={}, rcv={})",
+            actual_snd, actual_rcv, udp_snd, udp_rcv
+        );
+
+        assert!(stream.close().is_ok());
+        srt::cleanup().expect("failed cleanup");
+    }
+    #[test]
+    fn test_udp_buffer_mapping_async() {
+        srt::startup().expect("failed startup");
+
+        let udp_snd: i32 = 1_048_576;
+        let udp_rcv: i32 = 2_097_152;
+
+        let listener = srt::async_builder()
+            .set_udp_send_buffer(udp_snd)
+            .set_udp_receive_buffer(udp_rcv)
+            .set_file_transmission_type()
+            .listen("127.0.0.1:0", 1, None)
+            .expect("fail listen()");
+
+        let actual_snd = listener.socket.get_udp_send_buffer().expect("get snd");
+        let actual_rcv = listener.socket.get_udp_receive_buffer().expect("get rcv");
+
+        assert!(
+            actual_snd < actual_rcv,
+            "UDP buffers appear swapped (async): snd={} should be < rcv={} \
+             (configured snd={}, rcv={})",
+            actual_snd, actual_rcv, udp_snd, udp_rcv
+        );
+
+        assert!(listener.close().is_ok());
+        srt::cleanup().expect("failed cleanup");
+    }
 }
