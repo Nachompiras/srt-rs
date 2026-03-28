@@ -1511,15 +1511,25 @@ mod tests {
 
     /// SRT requires at least 1316 bytes per read. `read_to_end` uses small
     /// internal buffers, so we read in a loop with an SRT-sized buffer.
+    /// Connection-related errors are treated as EOF since the remote side
+    /// may close the socket before we finish reading.
     async fn async_read_all(stream: &mut crate::SrtAsyncStream) -> Vec<u8> {
+        use std::io::ErrorKind;
         let mut result = Vec::new();
         let mut buf = [0u8; 2048];
         loop {
             match stream.read(&mut buf).await {
                 Ok(0) => break,
                 Ok(n) => result.extend_from_slice(&buf[..n]),
-                Err(e) if e.kind() == std::io::ErrorKind::Other => break,
-                Err(e) => panic!("read error: {}", e),
+                Err(e) => match e.kind() {
+                    ErrorKind::Other
+                    | ErrorKind::ConnectionAborted
+                    | ErrorKind::ConnectionReset
+                    | ErrorKind::NotConnected
+                    | ErrorKind::AddrNotAvailable
+                    | ErrorKind::BrokenPipe => break,
+                    _ => panic!("read error: {}", e),
+                },
             }
         }
         result
@@ -1677,7 +1687,7 @@ mod tests {
         let two = srt::builder()
             .set_file_transmission_type()
             .set_rendezvous(true)
-            .bind("127.0.0.2:0")
+            .bind("127.0.0.1:0")
             .expect("fail bind()");
         let local = two.local_addr().expect("fail local_addr()");
         tx_2.send(local).expect("fail send through mpsc channel");
@@ -1698,14 +1708,14 @@ mod tests {
         thread::spawn(move || {
             let mut one = srt::builder()
                 .set_file_transmission_type()
-                .rendezvous("127.0.0.1:10000", "127.0.0.2:20000")
+                .rendezvous("127.0.0.1:30000", "127.0.0.1:30001")
                 .expect("fail rendezvous()");
             one.write_all(b"testing").expect("fail write()");
             assert!(one.close().is_ok());
         });
         let mut two = srt::builder()
             .set_file_transmission_type()
-            .rendezvous("127.0.0.2:20000", "127.0.0.1:10000")
+            .rendezvous("127.0.0.1:30001", "127.0.0.1:30000")
             .expect("fail rendezvous()");
         let mut buf = Vec::new();
         two.read_to_end(&mut buf).expect("fail read()");
@@ -1722,7 +1732,7 @@ mod tests {
         let one_task = async move {
             let mut one = srt::async_builder()
                 .set_file_transmission_type()
-                .rendezvous("127.0.0.1:10000", "127.0.0.2:20000")
+                .rendezvous("127.0.0.1:30002", "127.0.0.1:30003")
                 .expect("fail start rendezvous")
                 .await
                 .expect("fail rendezvous");
@@ -1732,7 +1742,7 @@ mod tests {
         let two_task = async move {
             let mut two = srt::async_builder()
                 .set_file_transmission_type()
-                .rendezvous("127.0.0.2:20000", "127.0.0.1:10000")
+                .rendezvous("127.0.0.1:30003", "127.0.0.1:30002")
                 .expect("fail start rendezvous")
                 .await
                 .expect("fail rendezvous");
