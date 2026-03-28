@@ -1,278 +1,50 @@
-use futures::future::ok;
-use libc::stat;
 use srt_rs::{self as srt};
-use srt_rs::*;
-use bytes::Bytes;
-use std::{io::Error, net::{SocketAddr, UdpSocket}};
+use std::net::SocketAddr;
+use tokio::io::Result;
 
-//SRT Listener Receiver -> UDP Output
-fn listener_receiver() -> std::io::Result<()> {
-    let remote = "127.0.0.1:1234"; // args.next().unwrap();
+#[tokio::main(flavor = "multi_thread")]
+async fn main() -> Result<()> {
+    srt::startup()?;
+
+    let listen_addr = "127.0.0.1:1234";
     let output_addr: SocketAddr = "127.0.0.1:9090".parse().unwrap();
 
-    println!("Listening {}", remote);
-    let addr: SocketAddr = remote.parse().expect("Invalid addr:port syntax");
-
-    //srt::startup().expect("startup");
-    /*
-    let ss = SrtSocket::new().expect("create_socket");
-
-    ss.bind(addr).expect("bind");
-
-    ss.listen(2).expect("listen");
-
-    let (tss, _taddr) = ss.accept().expect("accept");    
-    */
-    
-    let socket_output = UdpSocket::bind("0.0.0.0:0")?;
-
-    let ss = srt::builder()
+    let listener = srt::builder()
         .set_live_transmission_type()
-        .listen(remote, 2).expect("asd");
+        .set_passphrase(Some(String::from("oli123")))
+        .listen(listen_addr, 2)?;
 
-    let (tss, _taddr) = ss.accept().expect("accept");
-    println!("Accepted connection from {:?}", _taddr);
-    println!("Socket Accepted on {:?}", ss.socket.get_socket_state());
-
-    let mut is_connected = false;
     loop {
-        
-        let mut buffer = [0u8; 2048];
-        let num_bytes: usize = tss.socket.recv(&mut buffer)?;
-
-        let status = tss.socket.get_socket_state().expect("get_status");
-        //let bis = tss.srt_bistats(0,1).expect("get_bistats");
-        //println!("BISTATS: {:?}", bis);
-
-        if status == SrtSocketStatus::Connected {
-            if !is_connected {
-                println!("Socket is connected");
+        let (conn, peer) = match listener.accept() {
+            Ok((conn, peer)) => (conn, peer),
+            Err(e) => {
+                eprintln!("accept failed: {e}");
+                continue;
             }
-            is_connected = true;
+        };
+        println!("Accepted connection from {peer}");
 
-            //socket_output.send_to(&buffer[..num_bytes], &output_addr)?;
-            match socket_output.send_to(&buffer[..num_bytes], &output_addr) {
-                Ok(_) => {},
-                Err(e) => {
-                    println!("Error sending to UDP: {}", e);
-                }
+        let udp = tokio::net::UdpSocket::bind("0.0.0.0:0").await?;
+        tokio::spawn(async move {
+            if let Err(e) = pump(conn.socket, udp, output_addr).await {
+                eprintln!("connection {peer} failed: {e}");
             }
+        });
+    }
+}
+
+async fn pump(
+    srt_conn: srt::SrtSocket,
+    udp: tokio::net::UdpSocket,
+    target: SocketAddr,
+) -> Result<()> {
+    let mut buf = [0u8; 2048];
+    loop {
+        let n = srt_conn.recv(&mut buf)?;
+        if n == 0 {
+            break;
         }
-        else {
-            println!("Socket state: {:?}", status);
-        }
+        udp.send_to(&buf[..n], target).await?;
     }
-    
-    println!("Exiting receiver loop");
-    tss.close();
     Ok(())
-}
-
-// UDP Input -> SRT Listener sender
-fn listener_sender() -> std::io::Result<()>{
-    println!("Starting listener_sender fn");
-    let input_addr = "127.0.0.1:8080";
-    // Dirección de salida UDP
-    let output_addr: SocketAddr = "127.0.0.1:9090".parse().unwrap();
-
-    // Crear un socket UDP para recibir datos
-    let socket = UdpSocket::bind(input_addr)?;
-    println!("Listening {}", input_addr);
-
-    let mut buffer = [0u8; 65507];
-
-    //let ss = SrtSocket::new().expect("create_socket");
-    //ss.bind(output_addr).expect("bind");
-
-    //ss.listen(2).expect("listen");
-    //let (tss, _taddr) = ss.accept().expect("accept");
-    let ss = match srt::builder()
-        .set_live_transmission_type()
-        .listen(output_addr.to_string().as_str(), 2) {
-            Ok(ss) => ss,
-            Err(e) => {
-                println!("Error creating SRT listener: {}", e);
-                return Err(Error::new(std::io::ErrorKind::Other, "Error creating SRT listener"));
-            }
-        };
-
-    let (tss, _taddr) = ss.accept().expect("accept");
-    println!("Accepted connection from {:?}", _taddr);
-    println!("Socket Accepted on {:?}", ss.socket.get_socket_state());
-
-    loop {
-        // Recibir datos
-        match socket.recv_from(&mut buffer) {
-            Ok((len, src_addr)) => {                
-                match tss.socket.get_socket_state() {
-                    Ok(status) => {                        
-                        if status == SrtSocketStatus::Connected {
-                            let data = Bytes::copy_from_slice(&buffer[..len]);
-                            
-                            if let Err(e) = tss.socket.send(&data) {
-                                println!("Error sending data to SRT: {}", e);
-                            }
-                            //println!("Socket is connected");
-                            //tss.socket.send(&buffer[..num_bytes]).expect("send");
-                        }   
-                        else if status == SrtSocketStatus::Closed {
-                            println!("Socket is closed");
-                            return Ok(());
-                            //break; // Salir del bucle si el socket se desconecta
-                        } else {
-                            println!("Socket state: {:?}", status);                                                    
-                        }     
-                    },
-                    Err(e) => {
-                        println!("Error getting socket state: {}", e);
-                        continue;
-                    }
-                };    
-            },
-            Err(e) => {
-                println!("Error receiving data: {}", e);
-                return Ok(())
-            }
-        };            
-    }
-}
-
-//SRT Caller Receiver -> UDP Output
-fn caller_receiver() -> std::io::Result<()>{
-    let remote = "0:00"; // args.next().unwrap();
-    let output_addr: SocketAddr = "127.0.0.1:9090".parse().unwrap();
-
-    let addr: SocketAddr = remote.parse().expect("Invalid addr:port syntax");
-    /*
-    let ss = SrtSocket::new().expect("create_socket");
-
-    ss.connect(addr).expect("connect");
-
-    
-    */
-
-    let ss = match srt::builder()
-        .set_live_transmission_type()
-        .connect(remote) {
-            Ok(ss) => ss,
-            Err(e) => {
-                println!("Error connecting: {}", e);
-                return Err(Error::new(std::io::ErrorKind::Other, "Error connecting"));
-            }
-        };
-
-    let socket_output = UdpSocket::bind("0.0.0.0:0")?;
-    println!("Connected to {}", remote);
-    loop {
-        let mut buffer = [0u8; 2048];
-        match ss.socket.recv(&mut buffer) {
-            Ok(n) => {
-                // Data received successfully
-                match ss.socket.get_socket_state() {
-                    Ok(status) => {
-                        if status == SrtSocketStatus::Connected {
-                            //println!("Socket is connected");
-                            match socket_output.send_to(&buffer[..n], &output_addr) {
-                                Ok(_) => {},
-                                Err(e) => {
-                                    println!("Error sending to UDP: {}", e);
-                                }
-                            }
-                        }   
-                        else if status == SrtSocketStatus::Closed {
-                            println!("Socket is closed");
-                            //break; // Salir del bucle si el socket se desconecta
-                        } else {
-                            println!("Socket state: {:?}", status);                        
-                        }     
-                    }
-                    Err(e) => {
-                        println!("Error getting socket state: {}", e);
-                    }
-                }                   
-            }
-            Err(e) => {
-                println!("Error receiving data: {}", e);
-                return Ok(());
-            }
-        }        
-    }
-}
-
-//UDP Input -> Srt Caller Sender
-fn caller_sender() -> std::io::Result<()> {
-    let input_addr = "127.0.0.1:8080";
-    
-    let output_addr: SocketAddr = "127.0.0.1:9090".parse().unwrap();
-
-    let socket = UdpSocket::bind(input_addr)?;
-    
-    let mut buffer = [0; 65507];
-
-    let ss = match srt::builder()
-        .set_live_transmission_type()
-        .connect(output_addr) {
-            Ok(ss) => ss,
-            Err(e) => {
-                println!("Error connecting: {}", e);
-                return Err(Error::new(std::io::ErrorKind::Other, "Error connecting"));
-            }
-        };
-    
-    loop {
-
-        let (num_bytes, _) = socket.recv_from(&mut buffer)?;
-
-        let status = match ss.socket.get_socket_state() {
-            Ok(status) => {
-                if status == SrtSocketStatus::Connected {
-                    println!("Socket is connected");
-                    if let Err(e) = ss.socket.send(&Bytes::copy_from_slice(&buffer[..num_bytes])) {
-                        println!("Error sending data to SRT: {}", e);
-                    }
-                } else if status == SrtSocketStatus::Closed {
-                    println!("Socket is closed");
-                    break; // Salir del bucle si el socket se desconecta
-                } else {
-                    println!("Socket state: {:?}", status);            
-                }
-            }
-            Err(e) => {
-                println!("Error getting socket state: {}", e);
-                return Err(Error::new(std::io::ErrorKind::Other, "Error getting socket state"));
-            }
-        };                
-    }                
-        
-    Ok(())
-}
-
-
-fn main() {
-    
-    srt::startup().expect("startup");
-
-    // loop {
-    //     listener_receiver();
-    //     std::thread::sleep(std::time::Duration::from_secs(1));       
-    // }
-        
-    // loop {
-    //     caller_receiver();
-    //     std::thread::sleep(std::time::Duration::from_secs(1));
-    // }
-    
-    // loop {
-    //     println!("Starting listener_sender");
-    //     listener_sender();
-    //     std::thread::sleep(std::time::Duration::from_secs(1));
-    // }
-    
-    loop {
-        println!("Starting caller_sender");
-        caller_sender();
-        std::thread::sleep(std::time::Duration::from_secs(1));
-    }
-
-    srt::cleanup().expect("cleanup");
 }

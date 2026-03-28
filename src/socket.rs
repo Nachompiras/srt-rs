@@ -51,8 +51,8 @@ impl SrtSocket {
         }
     }
     pub fn bind<A: ToSocketAddrs>(self, addrs: A) -> Result<Self> {
-        if let Ok(addrs) = addrs.to_socket_addrs() {
-            for addr in addrs {
+        if let Ok(mut addrs) = addrs.to_socket_addrs() {
+            if let Some(addr) = addrs.next() {
                 let os_addr: OsSocketAddr = addr.into();
                 let result = unsafe {
                     srt::srt_bind(
@@ -116,7 +116,7 @@ impl SrtSocket {
                 os_target.len() as i32,
             )
         };
-        return error::handle_result((), result);
+        error::handle_result((), result)
     }
     pub fn listen(&self, backlog: i32) -> Result<()> {
         let result = unsafe { srt::srt_listen(self.id, backlog) };
@@ -362,7 +362,7 @@ impl SrtSocket {
                 &mut _optlen as *mut c_int,
             )
         };
-        error::handle_result(linger.l_linger as i32, result)
+        error::handle_result(linger.l_linger, result)
     }
     pub fn get_max_reorder_tolerance(&self) -> Result<i32> {
         let mut packets = 0;
@@ -767,7 +767,7 @@ impl SrtSocket {
                 self.id,
                 srt::SRT_SOCKOPT::SRTO_DRIFTTRACER,
                 &enable as *const bool as *const c_void,
-                mem::size_of::<i64>() as c_int,
+                mem::size_of::<bool>() as c_int,
             )
         };
         error::handle_result((), result)

@@ -1,0 +1,5 @@
+[env]
+OPENSSL_DIR = "/opt/homebrew/opt/openssl@3"
+
+[build]
+rustflags = ["-L", "/opt/homebrew/opt/openssl@3/lib"]
