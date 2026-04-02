@@ -573,8 +573,6 @@ impl SrtBuilder {
 
 pub struct SrtAsyncStream {
     pub socket: SrtSocket,
-    read_epoll: Option<Epoll>,
-    write_epoll: Option<Epoll>,
 }
 
 impl SrtAsyncStream {
@@ -718,28 +716,19 @@ impl AsyncRead for SrtAsyncStream {
         if buf.capacity() < 1316 {
             return Poll::Ready(Err(io::Error::new(io::ErrorKind::InvalidInput, "buffer must have capacity for 1316 bytes")));
         }
-        let this = self.get_mut();
-        match this.socket.recv(buf.initialize_unfilled()) {
+        match self.socket.recv(buf.initialize_unfilled()) {
             Ok(s) => {
                 buf.advance(s);
                 Poll::Ready(Ok(()))
             },
             Err(e) => match e {
                 SrtError::AsyncRcv => {
-                    let epoll = match this.read_epoll {
-                        Some(ref ep) => ep,
-                        None => {
-                            let mut ep = Epoll::new()?;
-                            ep.add(&this.socket, &srt::SRT_EPOLL_OPT::SRT_EPOLL_IN)?;
-                            this.read_epoll = Some(ep);
-                            this.read_epoll.as_ref().unwrap()
-                        }
-                    };
-                    let epoll_id = epoll.id;
-                    let num_sock = epoll.num_sock;
                     let waker = cx.waker().clone();
+                    let mut epoll = Epoll::new()?;
+                    epoll.add(&self.socket, &srt::SRT_EPOLL_OPT::SRT_EPOLL_IN)?;
                     tokio::task::spawn_blocking(move || {
-                        epoll_uwait_raw(epoll_id, num_sock, EPOLL_TIMEOUT_MS);
+                        // Always wake after timeout/event/error to re-evaluate socket state
+                        let _ = epoll.wait(EPOLL_TIMEOUT_MS);
                         waker.wake();
                     });
                     Poll::Pending
@@ -756,30 +745,21 @@ impl AsyncWrite for SrtAsyncStream {
         cx: &mut Context<'_>,
         buf: &[u8],
     ) -> Poll<std::result::Result<usize, io::Error>> {
-        let this = self.get_mut();
-        match this.socket.send(buf) {
+        match self.socket.send(buf) {
             Ok(s) => Poll::Ready(Ok(s)),
             Err(e) => match e {
-                SrtError::AsyncSnd => match this.socket.get_sender_buffer() {
+                SrtError::AsyncSnd => match self.socket.get_sender_buffer() {
                     Ok((_blocks, bytes)) => {
                         if bytes == 0 {
                             Poll::Ready(Ok(0))
                         } else {
-                            let epoll = match this.write_epoll {
-                                Some(ref ep) => ep,
-                                None => {
-                                    let mut ep = Epoll::new()?;
-                                    ep.add(&this.socket, &srt::SRT_EPOLL_OPT::SRT_EPOLL_OUT)?;
-                                    this.write_epoll = Some(ep);
-                                    this.write_epoll.as_ref().unwrap()
-                                }
-                            };
-                            let epoll_id = epoll.id;
-                            let num_sock = epoll.num_sock;
                             let waker = cx.waker().clone();
+                            let mut epoll = Epoll::new()?;
+                            epoll.add(&self.socket, &srt::SRT_EPOLL_OPT::SRT_EPOLL_OUT)?;
                             tokio::task::spawn_blocking(move || {
-                                epoll_uwait_raw(epoll_id, num_sock, EPOLL_TIMEOUT_MS);
-                                waker.wake();
+                                if epoll.wait(EPOLL_TIMEOUT_MS).is_ok() {
+                                    waker.wake();
+                                }
                             });
                             Poll::Pending
                         }
@@ -794,26 +774,17 @@ impl AsyncWrite for SrtAsyncStream {
         self: Pin<&mut Self>,
         cx: &mut Context<'_>,
     ) -> Poll<std::result::Result<(), io::Error>> {
-        let this = self.get_mut();
-        match this.socket.get_sender_buffer() {
+        match self.socket.get_sender_buffer() {
             Ok((_blocks, bytes)) => {
                 if bytes == 0 {
                     Poll::Ready(Ok(()))
                 } else {
-                    let epoll = match this.write_epoll {
-                        Some(ref ep) => ep,
-                        None => {
-                            let mut ep = Epoll::new()?;
-                            ep.add(&this.socket, &srt::SRT_EPOLL_OPT::SRT_EPOLL_OUT)?;
-                            this.write_epoll = Some(ep);
-                            this.write_epoll.as_ref().unwrap()
-                        }
-                    };
-                    let epoll_id = epoll.id;
-                    let num_sock = epoll.num_sock;
                     let waker = cx.waker().clone();
+                    let mut epoll = Epoll::new()?;
+                    epoll.add(&self.socket, &srt::SRT_EPOLL_OPT::SRT_EPOLL_OUT)?;
                     tokio::task::spawn_blocking(move || {
-                        epoll_uwait_raw(epoll_id, num_sock, EPOLL_TIMEOUT_MS);
+                        // Always wake after timeout/event/error to re-evaluate socket state
+                        let _ = epoll.wait(EPOLL_TIMEOUT_MS);
                         waker.wake();
                     });
                     Poll::Pending
@@ -826,29 +797,20 @@ impl AsyncWrite for SrtAsyncStream {
         self: Pin<&mut Self>,
         cx: &mut Context<'_>,
     ) -> Poll<std::result::Result<(), io::Error>> {
-        let this = self.get_mut();
-        match this.socket.get_sender_buffer() {
+        match self.socket.get_sender_buffer() {
             Ok((_blocks, bytes)) => {
                 if bytes == 0 {
-                    Poll::Ready(match this.socket.close() {
+                    Poll::Ready(match self.socket.close() {
                         Ok(()) => Ok(()),
                         Err(e) => Err(e.into()),
                     })
                 } else {
-                    let epoll = match this.write_epoll {
-                        Some(ref ep) => ep,
-                        None => {
-                            let mut ep = Epoll::new()?;
-                            ep.add(&this.socket, &srt::SRT_EPOLL_OPT::SRT_EPOLL_OUT)?;
-                            this.write_epoll = Some(ep);
-                            this.write_epoll.as_ref().unwrap()
-                        }
-                    };
-                    let epoll_id = epoll.id;
-                    let num_sock = epoll.num_sock;
                     let waker = cx.waker().clone();
+                    let mut epoll = Epoll::new()?;
+                    epoll.add(&self.socket, &srt::SRT_EPOLL_OPT::SRT_EPOLL_OUT)?;
                     tokio::task::spawn_blocking(move || {
-                        epoll_uwait_raw(epoll_id, num_sock, EPOLL_TIMEOUT_MS);
+                        // Always wake after timeout/event/error to re-evaluate socket state
+                        let _ = epoll.wait(EPOLL_TIMEOUT_MS);
                         waker.wake();
                     });
                     Poll::Pending
@@ -916,7 +878,6 @@ impl SrtAsyncListener {
     pub fn accept(&self) -> AcceptFuture {
         AcceptFuture {
             socket: self.socket,
-            epoll: None,
         }
     }
     pub fn close(self) -> Result<()> {
@@ -935,35 +896,25 @@ impl Drop for SrtAsyncListener {
 
 pub struct AcceptFuture {
     socket: SrtSocket,
-    epoll: Option<Epoll>,
 }
 
 impl Future for AcceptFuture {
     type Output = Result<(SrtAsyncStream, SocketAddr)>;
     fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
-        let this = self.get_mut();
-        match this.socket.accept() {
+        match self.socket.accept() {
             Ok((socket, addr)) => {
                 socket.set_receive_blocking(false)?;
                 socket.set_send_blocking(false)?;
-                Poll::Ready(Ok((SrtAsyncStream { socket, read_epoll: None, write_epoll: None }, addr)))
+                Poll::Ready(Ok((SrtAsyncStream { socket }, addr)))
             }
             Err(e) => match e {
                 SrtError::AsyncRcv => {
-                    let epoll = match this.epoll {
-                        Some(ref ep) => ep,
-                        None => {
-                            let mut ep = Epoll::new()?;
-                            ep.add(&this.socket, &srt::SRT_EPOLL_OPT::SRT_EPOLL_IN)?;
-                            this.epoll = Some(ep);
-                            this.epoll.as_ref().unwrap()
-                        }
-                    };
-                    let epoll_id = epoll.id;
-                    let num_sock = epoll.num_sock;
                     let waker = cx.waker().clone();
+                    let mut epoll = Epoll::new()?;
+                    epoll.add(&self.socket, &srt::SRT_EPOLL_OPT::SRT_EPOLL_IN)?;
                     tokio::task::spawn_blocking(move || {
-                        epoll_uwait_raw(epoll_id, num_sock, EPOLL_TIMEOUT_MS);
+                        // Always wake after timeout/event/error to re-evaluate socket state
+                        let _ = epoll.wait(EPOLL_TIMEOUT_MS);
                         waker.wake();
                     });
                     Poll::Pending
@@ -976,42 +927,30 @@ impl Future for AcceptFuture {
 
 pub struct ConnectFuture {
     socket: SrtSocket,
-    epoll: Option<Epoll>,
 }
 
 impl Future for ConnectFuture {
     type Output = Result<SrtAsyncStream>;
     fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
-        let this = self.get_mut();
-        match this.socket.get_socket_state() {
+        match self.socket.get_socket_state() {
             Ok(s) => match s {
                 SrtSocketStatus::Connected => Poll::Ready(Ok(SrtAsyncStream {
-                    socket: this.socket,
-                    read_epoll: None,
-                    write_epoll: None,
+                    socket: self.socket,
                 })),
                 SrtSocketStatus::Broken => Poll::Ready(Err(SrtError::ConnLost)),
                 SrtSocketStatus::Init => Poll::Ready(Err(SrtError::UnboundSock)),
                 SrtSocketStatus::Opened => Poll::Ready(Err(SrtError::InvOp)),
                 SrtSocketStatus::Listening => Poll::Ready(Err(SrtError::InvOp)),
-                SrtSocketStatus::Connecting => match this.socket.get_reject_reason() {
+                SrtSocketStatus::Connecting => match self.socket.get_reject_reason() {
                     error::SrtRejectReason::Unknown => {
-                        let epoll = match this.epoll {
-                            Some(ref ep) => ep,
-                            None => {
-                                let mut ep = Epoll::new()?;
-                                let events =
-                                    srt::SRT_EPOLL_OPT::SRT_EPOLL_OUT | srt::SRT_EPOLL_OPT::SRT_EPOLL_ERR;
-                                ep.add(&this.socket, &events)?;
-                                this.epoll = Some(ep);
-                                this.epoll.as_ref().unwrap()
-                            }
-                        };
-                        let epoll_id = epoll.id;
-                        let num_sock = epoll.num_sock;
                         let waker = cx.waker().clone();
+                        let mut epoll = Epoll::new()?;
+                        let events =
+                            srt::SRT_EPOLL_OPT::SRT_EPOLL_OUT | srt::SRT_EPOLL_OPT::SRT_EPOLL_ERR;
+                        epoll.add(&self.socket, &events)?;
                         tokio::task::spawn_blocking(move || {
-                            epoll_uwait_raw(epoll_id, num_sock, EPOLL_TIMEOUT_MS);
+                            // Always wake after timeout/event/error to re-evaluate socket state
+                            let _ = epoll.wait(EPOLL_TIMEOUT_MS);
                             waker.wake();
                         });
                         Poll::Pending
@@ -1037,7 +976,6 @@ impl SrtBoundAsyncSocket {
         self.socket.set_receive_blocking(false)?;
         Ok(ConnectFuture {
             socket: self.socket,
-            epoll: None,
         })
     }
     pub fn local_addr(&self) -> Result<SocketAddr> {
@@ -1064,7 +1002,7 @@ impl SrtAsyncBuilder {
         socket.set_send_blocking(false)?;
         socket.connect(remote)?;
         socket.set_receive_blocking(false)?;
-        Ok(ConnectFuture { socket, epoll: None })
+        Ok(ConnectFuture { socket })
     }
     pub fn listen<A: ToSocketAddrs>(self, addr: A, backlog: i32, callback: Option<SrtListenerCallback>) -> Result<SrtAsyncListener> {
         let socket = SrtSocket::new()?;
@@ -1081,7 +1019,7 @@ impl SrtAsyncBuilder {
         socket.set_send_blocking(false)?;
         socket.rendezvous(local, remote)?;
         socket.set_receive_blocking(false)?;
-        Ok(ConnectFuture { socket, epoll: None })
+        Ok(ConnectFuture { socket })
     }
 }
 
@@ -1386,20 +1324,6 @@ enum SrtPreConnectOpt {
     UdpRcvBuf(i32),
 }
 
-/// Raw epoll wait that only needs the epoll id — safe to call from `spawn_blocking`
-/// without moving the `Epoll` struct (which owns the `Drop` for `srt_epoll_release`).
-fn epoll_uwait_raw(epoll_id: i32, num_sock: usize, timeout: i64) {
-    let mut array = vec![srt::SRT_EPOLL_EVENT { fd: 0, events: 0 }; num_sock];
-    unsafe {
-        srt::srt_epoll_uwait(
-            epoll_id,
-            array[..].as_mut_ptr() as *mut srt::SRT_EPOLL_EVENT,
-            array.len() as c_int,
-            timeout,
-        );
-    }
-}
-
 struct Epoll {
     id: i32,
     num_sock: usize,
@@ -1449,7 +1373,6 @@ impl Epoll {
         };
         error::handle_result((), result)
     }
-    #[allow(dead_code)]
     fn wait(&self, timeout: i64) -> Result<Vec<(SrtSocket, srt::SRT_EPOLL_OPT)>> {
         let mut array = vec![srt::SRT_EPOLL_EVENT { fd: 0, events: 0 }; self.num_sock];
         let result = unsafe {
