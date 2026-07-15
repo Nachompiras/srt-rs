@@ -861,19 +861,20 @@ extern "C" fn srt_listener_callback(opaque: *mut c_void, ns: srt::SRTSOCKET, _hs
 
 impl SrtAsyncListener {
     pub fn new(socket: SrtSocket, callback: Option<SrtListenerCallback>, backlog: i32) -> Result<Self> {
+        let mut socket = SocketGuard::new(socket);
         let safe_callback = match callback {
             Some(cb) => {
                 let arc_callback = Arc::new(Mutex::new(cb));
                 let opaque_callback = Arc::into_raw(arc_callback.clone()) as *mut c_void;
-                let result = unsafe { srt::srt_listen_callback(socket.id, Some(srt_listener_callback), opaque_callback) };
+                let result = unsafe { srt::srt_listen_callback(socket.socket().id, Some(srt_listener_callback), opaque_callback) };
                 error::handle_result((), result)?;
                 Some(arc_callback)
             },
             None => None
         };
 
-        socket.listen(backlog)?; // Still synchronous
-        Ok(SrtAsyncListener { socket, _callback: safe_callback })
+        socket.socket().listen(backlog)?; // Still synchronous
+        Ok(SrtAsyncListener { socket: socket.take(), _callback: safe_callback })
     }
     pub fn accept(&self) -> AcceptFuture {
         AcceptFuture {
@@ -894,6 +895,40 @@ impl Drop for SrtAsyncListener {
     }
 }
 
+/// Temporarily owns an SRT socket while it is being configured or transferred.
+/// Any early return drops the guard and closes the native socket.
+struct SocketGuard {
+    socket: Option<SrtSocket>,
+}
+
+impl SocketGuard {
+    fn new(socket: SrtSocket) -> Self {
+        Self {
+            socket: Some(socket),
+        }
+    }
+
+    fn socket(&self) -> &SrtSocket {
+        self.socket
+            .as_ref()
+            .expect("socket guard accessed after ownership transfer")
+    }
+
+    fn take(&mut self) -> SrtSocket {
+        self.socket
+            .take()
+            .expect("socket guard ownership transferred twice")
+    }
+}
+
+impl Drop for SocketGuard {
+    fn drop(&mut self) {
+        if let Some(socket) = self.socket.take() {
+            let _ = socket.close();
+        }
+    }
+}
+
 pub struct AcceptFuture {
     socket: SrtSocket,
 }
@@ -903,9 +938,15 @@ impl Future for AcceptFuture {
     fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
         match self.socket.accept() {
             Ok((socket, addr)) => {
-                socket.set_receive_blocking(false)?;
-                socket.set_send_blocking(false)?;
-                Poll::Ready(Ok((SrtAsyncStream { socket }, addr)))
+                let mut socket = SocketGuard::new(socket);
+                socket.socket().set_receive_blocking(false)?;
+                socket.socket().set_send_blocking(false)?;
+                Poll::Ready(Ok((
+                    SrtAsyncStream {
+                        socket: socket.take(),
+                    },
+                    addr,
+                )))
             }
             Err(e) => match e {
                 SrtError::AsyncRcv => {
@@ -926,28 +967,37 @@ impl Future for AcceptFuture {
 }
 
 pub struct ConnectFuture {
-    socket: SrtSocket,
+    /// `Some` while this future owns the native socket. On successful
+    /// connection the socket is taken and transferred to `SrtAsyncStream`.
+    socket: Option<SrtSocket>,
 }
 
 impl Future for ConnectFuture {
     type Output = Result<SrtAsyncStream>;
     fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
-        match self.socket.get_socket_state() {
+        let this = self.get_mut();
+        let socket = match this.socket.as_ref() {
+            Some(socket) => socket,
+            None => return Poll::Ready(Err(SrtError::InvSock)),
+        };
+
+        match socket.get_socket_state() {
             Ok(s) => match s {
-                SrtSocketStatus::Connected => Poll::Ready(Ok(SrtAsyncStream {
-                    socket: self.socket,
-                })),
+                SrtSocketStatus::Connected => {
+                    let socket = this.socket.take().ok_or(SrtError::InvSock)?;
+                    Poll::Ready(Ok(SrtAsyncStream { socket }))
+                }
                 SrtSocketStatus::Broken => Poll::Ready(Err(SrtError::ConnLost)),
                 SrtSocketStatus::Init => Poll::Ready(Err(SrtError::UnboundSock)),
                 SrtSocketStatus::Opened => Poll::Ready(Err(SrtError::InvOp)),
                 SrtSocketStatus::Listening => Poll::Ready(Err(SrtError::InvOp)),
-                SrtSocketStatus::Connecting => match self.socket.get_reject_reason() {
+                SrtSocketStatus::Connecting => match socket.get_reject_reason() {
                     error::SrtRejectReason::Unknown => {
                         let waker = cx.waker().clone();
                         let mut epoll = Epoll::new()?;
                         let events =
                             srt::SRT_EPOLL_OPT::SRT_EPOLL_OUT | srt::SRT_EPOLL_OPT::SRT_EPOLL_ERR;
-                        epoll.add(&self.socket, &events)?;
+                        epoll.add(socket, &events)?;
                         tokio::task::spawn_blocking(move || {
                             // Always wake after timeout/event/error to re-evaluate socket state
                             let _ = epoll.wait(EPOLL_TIMEOUT_MS);
@@ -966,16 +1016,25 @@ impl Future for ConnectFuture {
     }
 }
 
+impl Drop for ConnectFuture {
+    fn drop(&mut self) {
+        if let Some(socket) = self.socket.take() {
+            let _ = socket.close();
+        }
+    }
+}
+
 pub struct SrtBoundAsyncSocket {
     pub socket: SrtSocket,
 }
 
 impl SrtBoundAsyncSocket {
     pub fn connect<A: ToSocketAddrs>(self, remote: A) -> Result<ConnectFuture> {
-        self.socket.connect(remote)?;
-        self.socket.set_receive_blocking(false)?;
+        let mut socket = SocketGuard::new(self.socket);
+        socket.socket().connect(remote)?;
+        socket.socket().set_receive_blocking(false)?;
         Ok(ConnectFuture {
-            socket: self.socket,
+            socket: Some(socket.take()),
         })
     }
     pub fn local_addr(&self) -> Result<SocketAddr> {
@@ -990,36 +1049,42 @@ pub struct SrtAsyncBuilder {
 
 impl SrtAsyncBuilder {
     pub fn bind<A: ToSocketAddrs>(self, local: A) -> Result<SrtBoundAsyncSocket> {
-        let socket = SrtSocket::new()?;
-        self.config_socket(&socket)?;
-        socket.set_send_blocking(false)?;
-        let socket = socket.bind(local)?;
-        Ok(SrtBoundAsyncSocket { socket })
+        let mut socket = SocketGuard::new(SrtSocket::new()?);
+        self.config_socket(socket.socket())?;
+        socket.socket().set_send_blocking(false)?;
+        let bound = socket.socket().bind(local)?;
+        // `bind` returns the same copyable native handle. Keep one logical owner.
+        let _ = socket.take();
+        Ok(SrtBoundAsyncSocket { socket: bound })
     }
     pub fn connect<A: ToSocketAddrs>(self, remote: A) -> Result<ConnectFuture> {
-        let socket = SrtSocket::new()?;
-        self.config_socket(&socket)?;
-        socket.set_send_blocking(false)?;
-        socket.connect(remote)?;
-        socket.set_receive_blocking(false)?;
-        Ok(ConnectFuture { socket })
+        let mut socket = SocketGuard::new(SrtSocket::new()?);
+        self.config_socket(socket.socket())?;
+        socket.socket().set_send_blocking(false)?;
+        socket.socket().connect(remote)?;
+        socket.socket().set_receive_blocking(false)?;
+        Ok(ConnectFuture {
+            socket: Some(socket.take()),
+        })
     }
     pub fn listen<A: ToSocketAddrs>(self, addr: A, backlog: i32, callback: Option<SrtListenerCallback>) -> Result<SrtAsyncListener> {
-        let socket = SrtSocket::new()?;
+        let mut socket = SocketGuard::new(SrtSocket::new()?);
+        self.config_socket(socket.socket())?;
+        let bound = socket.socket().bind(addr)?;
+        let _ = socket.take();
 
-        self.config_socket(&socket)?;
-        let socket = socket.bind(addr)?;
-
-        SrtAsyncListener::new(socket, callback, backlog)
+        SrtAsyncListener::new(bound, callback, backlog)
     }
     pub fn rendezvous<A: ToSocketAddrs>(self, local: A, remote: A) -> Result<ConnectFuture> {
-        let socket = SrtSocket::new()?;
-        socket.set_rendezvous(true)?;
-        self.config_socket(&socket)?;
-        socket.set_send_blocking(false)?;
-        socket.rendezvous(local, remote)?;
-        socket.set_receive_blocking(false)?;
-        Ok(ConnectFuture { socket })
+        let mut socket = SocketGuard::new(SrtSocket::new()?);
+        socket.socket().set_rendezvous(true)?;
+        self.config_socket(socket.socket())?;
+        socket.socket().set_send_blocking(false)?;
+        socket.socket().rendezvous(local, remote)?;
+        socket.socket().set_receive_blocking(false)?;
+        Ok(ConnectFuture {
+            socket: Some(socket.take()),
+        })
     }
 }
 
@@ -1679,6 +1744,120 @@ mod tests {
         block_on(future::join(one_task, two_task));
         srt::cleanup().expect("failed cleanup");
     }
+    #[test]
+    fn dropping_connect_future_closes_owned_socket() {
+        srt::startup().expect("failed startup");
+
+        let socket = crate::socket::SrtSocket::new().expect("failed to create socket");
+        let probe = socket;
+        let future = crate::ConnectFuture {
+            socket: Some(socket),
+        };
+
+        drop(future);
+
+        assert!(matches!(
+            probe.get_socket_state(),
+            Ok(crate::socket::SrtSocketStatus::Closed | crate::socket::SrtSocketStatus::NonExist)
+                | Err(crate::error::SrtError::InvSock)
+        ));
+
+        srt::cleanup().expect("failed cleanup");
+    }
+
+    #[cfg(target_os = "linux")]
+    fn process_resource_counts() -> (usize, usize) {
+        let fd_count = std::fs::read_dir("/proc/self/fd")
+            .expect("failed to read /proc/self/fd")
+            .count();
+        let srt_queue_threads = std::fs::read_dir("/proc/self/task")
+            .expect("failed to read /proc/self/task")
+            .filter_map(Result::ok)
+            .filter_map(|entry| std::fs::read_to_string(entry.path().join("comm")).ok())
+            .filter(|name| name.starts_with("SRT:SndQ") || name.starts_with("SRT:RcvQ"))
+            .count();
+        (fd_count, srt_queue_threads)
+    }
+
+    fn udp_blackhole() -> (std::net::UdpSocket, SocketAddr) {
+        let socket = std::net::UdpSocket::bind("127.0.0.1:0")
+            .expect("failed to bind UDP blackhole socket");
+        let addr = socket.local_addr().expect("failed to read blackhole address");
+        (socket, addr)
+    }
+
+    #[test]
+    fn cancelling_pending_connect_with_active_waiter_is_safe() {
+        use std::time::Duration;
+
+        srt::startup().expect("failed startup");
+        let (_blackhole, addr) = udp_blackhole();
+
+        block_on(async {
+            let future = srt::async_builder()
+                .set_connection_timeout(10_000)
+                .connect(addr)
+                .expect("failed to start connection");
+            assert!(
+                tokio::time::timeout(Duration::from_millis(25), future)
+                    .await
+                    .is_err(),
+                "blackhole connection unexpectedly completed"
+            );
+
+            // The detached epoll waiter may remain blocked until its finite timeout.
+            // Waiting verifies that closing its socket concurrently is safe.
+            tokio::time::sleep(Duration::from_millis(crate::EPOLL_TIMEOUT_MS as u64 + 250)).await;
+        });
+
+        srt::cleanup().expect("failed cleanup");
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn cancelled_connect_futures_release_native_resources() {
+        use std::time::Duration;
+
+        srt::startup().expect("failed startup");
+        let (_blackhole, addr) = udp_blackhole();
+        let baseline = process_resource_counts();
+
+        block_on(async {
+            for _ in 0..25 {
+                let future = srt::async_builder()
+                    .set_connection_timeout(10_000)
+                    .connect(addr)
+                    .expect("failed to start connection");
+                assert!(
+                    tokio::time::timeout(Duration::from_millis(10), future)
+                        .await
+                        .is_err(),
+                    "blackhole connection unexpectedly completed"
+                );
+            }
+
+            // Epoll waiters use a finite 5-second timeout. Give them and libsrt's
+            // garbage collector enough time to observe all closed sockets.
+            tokio::time::sleep(Duration::from_millis(crate::EPOLL_TIMEOUT_MS as u64 + 1_000)).await;
+        });
+
+        let final_counts = process_resource_counts();
+        assert!(
+            final_counts.0 <= baseline.0 + 5,
+            "file descriptors leaked: baseline={}, final={}",
+            baseline.0,
+            final_counts.0
+        );
+        assert!(
+            final_counts.1 <= baseline.1 + 2,
+            "SRT queue threads leaked: baseline={}, final={}",
+            baseline.1,
+            final_counts.1
+        );
+
+        srt::cleanup().expect("failed cleanup");
+    }
+
     #[test]
     fn test_udp_buffer_mapping() {
         srt::startup().expect("failed startup");
