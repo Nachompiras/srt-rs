@@ -9,7 +9,7 @@ repository = "https://github.com/Nachompiras/srt-rs"
 readme = "README.md"
 
 [dependencies]
-libsrt-sys = { path = "libsrt-sys", version = "1.5.4" }
+libsrt-sys = { path = "libsrt-sys", version = "1.5.6" }
 libc = "0.2.177"
 futures = "0.3"
 bytes = "1.10.1"
